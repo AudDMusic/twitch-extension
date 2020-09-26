@@ -12,7 +12,7 @@ Frontend is written in JS. There are two versions of layouts: with history and b
 
 When the frontend is being opened, it connects to the backend to get the history of the songs (including the last played song). After that, it connects to the Twitch PubSub system to get new songs.
 
-If the frontend can't connect to Twitch pubsub, it connects directly to the backend and uses longpoll to get new songs.
+If the frontend can't connect to Twitch pubsub but opened with `?ch=[twitch username]` in the URL, it connects directly to the backend and uses longpoll to get new songs.
 
 ## Backend
 
