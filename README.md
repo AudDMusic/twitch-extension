@@ -8,7 +8,7 @@ AudD allows you to recognize music both in audio files (from TikTok UGC to micro
 
 ## Frontend
 
-Frontend is written in JS. There are two versions of layouts: with history and background (for the panel below the video) and without history and background (for being placed on top of the video).
+Frontend is written in JS. There are two versions of widget layouts: with history & colorful background (for the panel below the video) and without history & with no background (for being placed on top of the video).
 
 When the frontend is being opened, it connects to the backend to get the history of the songs (including the last played song). After that, it connects to the Twitch PubSub system to get new songs.
 
