@@ -1,0 +1,29 @@
+<html class="no-touch"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <script src="js/jquery-3.3.1.min.js"></script>
+	<script type="text/javascript" src="js/handlebars-v4.0.10.js"></script>
+	<script type="text/javascript" src="js/mustache.min.js"></script>
+	<script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+    <link type="text/css" rel="stylesheet" href="css/main.css">
+    <title>AudD Music Recognition</title>
+	
+<script id="music_info_template" type="text/x-template">
+    <a href={{song_link}} target="_blank"><div class="album-art-bg" style="background-image: url(&quot;{{thumb}}&quot;);"></div><img class="album-art" src="{{thumb}}"><div class="status-label">Now Playing</div><i class="fas fa-external-link-alt external-icon"></i></a><div class="track-info-container"><div class="track-info"><div class="track-name-label"><a id="track-title">{{title}}</a><div class="whitespace">&nbsp;</div></div><div class="artist-name-label"><a id="track-artist">{{artist}}</a></div></div></div>
+</script>
+<script id="history_template" type="text/x-template">
+    {{#Elements}}<p>{{time}} <a href="{{song_link}}" target="_blank">{{artist}} - {{title}}</a></p>{{/Elements}}
+</script>
+<link href="css/all.min.css" rel="stylesheet">
+<script type="text/javascript" src="js/main.js"></script>
+</head>
+<body class="is-desktop vsc-initialized">
+   <div id="app" style="margin:20px;color:white;">Preview: <div style="width:320px;height:300px;"><div class="extension-panel light"><div><div class="section-top" id="music_info"></div></div><div class="section-bottom history" id="history"></div></div></div></div>
+   <noscript>
+       You need to enable JavaScript to run this app.
+   </noscript>
+<script type="text/javascript" src="./panel.bundle.js"></script>
+</body>
+
+</html>
+

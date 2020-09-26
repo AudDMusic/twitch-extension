@@ -1,0 +1,129 @@
+{
+  "allowHttpBackend": false,
+  "backendCommand": "",
+  "backendFolderName": "",
+  "certificateExceptions": [],
+  "extensionViews": [
+    {
+      "channelId": "57165160",
+      "configurationAnchor": "panel",
+      "displayChannelName": "mishasamin",
+      "features": {
+        "isBitsEnabled": false,
+        "isChatEnabled": false,
+        "isSubscriptionStatusAvailable": false
+      },
+      "frameSize": {
+        "width": 1280,
+        "height": 720
+      },
+      "id": "1",
+      "isPopout": false,
+      "label": "Default",
+      "linked": false,
+      "linkedUserId": "",
+      "orientation": "Portrait",
+      "type": "panel",
+      "viewerType": "Broadcaster"
+    },
+    {
+      "channelId": "57165160",
+      "configurationAnchor": "panel",
+      "displayChannelName": "mishasamin",
+      "features": {
+        "isBitsEnabled": false,
+        "isChatEnabled": false,
+        "isSubscriptionStatusAvailable": false
+      },
+      "frameSize": {
+        "width": 1280,
+        "height": 720
+      },
+      "id": "2",
+      "isPopout": false,
+      "label": "",
+      "linked": false,
+      "linkedUserId": "",
+      "orientation": "Portrait",
+      "type": "component",
+      "viewerType": "Broadcaster"
+    }
+  ],
+  "manifest": {
+    "anchor": "panel",
+    "assetUrls": [],
+    "authorName": "AudD, LLC",
+    "bitsEnabled": false,
+    "canInstall": true,
+    "configUrl": "https://localhost:8080/config.html",
+    "configurationLocation": "none",
+    "description": "The extension shows the information about the song that's currently playing on the stream. It listens to the stream and recognizes all the music using the AudD Music Recognition API. Needs the recognition for the stream running in order to work.\n\nThe video component shows just the current song, the panel also shows the history. Every time there's a new song, the extension posts the information about the song to the chat.\n\nIf you like a song, click on the album cover, the headphones icon or the link in the chat to open the song page with links to all the streaming services where the song is available to listen to.",
+    "eulaTosUrl": "",
+    "hasChatSupport": true,
+    "iconUrl": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/logof7fc5ffa-4868-4af9-9cf4-bdff3a994370",
+    "iconUrls": {
+      "100x100": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/logof7fc5ffa-4868-4af9-9cf4-bdff3a994370",
+      "24x24": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/taskbar65eef291-0a6f-49c9-902e-7f14c133b7fc",
+      "300x200": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/discoveryaf7021e7-bdd5-480f-927d-e5e7f82a2e28"
+    },
+    "id": "ikcbah7wbue48v7doo4edulmxblt64",
+    "installationCount": -42,
+    "liveConfigUrl": "",
+    "name": "AudD Music Recognition",
+    "panelHeight": 300,
+    "privacyPolicyUrl": "https://audd.io/privacy",
+    "requestIdentityLink": false,
+    "requiredBroadcasterAbilities": [],
+    "screenshotUrls": [
+      "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/screenshot0bc5fde7-8b61-4e21-aa62-882bd03391eb"
+    ],
+    "sku": "",
+    "state": "Testing",
+    "subscriptionsSupportLevel": "none",
+    "summary": "The extension shows what the song is currently playing on the stream. Based on the AudD Music recognition API.",
+    "supportEmail": "hello@audd.io",
+    "vendorCode": "",
+    "version": "0.0.1",
+    "viewerSummary": "You can see what the song is currently playing on the stream. Click on the album cover to open a song you like on any streaming service",
+    "viewerUrl": "https://localhost:8080/panel.html",
+    "viewerUrls": {
+      "mobile": "https://localhost:8080/panel.html",
+      "panel": "https://localhost:8080/panel.html",
+      "component": "https://localhost:8080/video_component.html"
+    },
+    "views": {
+      "mobile": {
+        "viewerUrl": "https://localhost:8080/panel.html"
+      },
+      "panel": {
+        "viewerUrl": "https://localhost:8080/panel.html",
+        "height": 300,
+        "canLinkExternalContent": false
+      },
+      "component": {
+        "viewerUrl": "https://localhost:8080/video_component.html",
+        "aspectWidth": 0,
+        "aspectHeight": 0,
+        "aspectRatioX": 200,
+        "aspectRatioY": 100,
+        "scalePixels": 320,
+        "targetHeight": 2500,
+        "size": 0,
+        "zoom": false,
+        "zoomPixels": 0,
+        "canLinkExternalContent": false,
+        "autoScale": true
+      },
+      "config": {
+        "viewerUrl": "https://localhost:8080/config.html",
+        "canLinkExternalContent": false
+      }
+    },
+    "whitelistedConfigUrls": [],
+    "whitelistedPanelUrls": []
+  },
+  "frontendCommand": "",
+  "frontendFolderName": "B:\\AudD\\twitch\\extension",
+  "name": "AudD music recognition",
+  "version": 2
+}
