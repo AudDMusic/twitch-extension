@@ -1,5 +1,11 @@
 # AudD Music Recognition Twitch extension
 
+The repository contains the source code for the [AudD Music Recognition Twitch extension](https://dashboard.twitch.tv/extensions/ikcbah7wbue48v7doo4edulmxblt64-0.0.1).
+
+The extension is based on [Music Recognition API](https://audd.io/).
+
+AudD allows you to recognize music both in audio files (from TikTok UGC to microphone recordings) and live audio streams. With AudD, you can analyze what music is popular on social media or on radio stations you connect, build nice Now Playing things, make your own shazam app, or a screen connected to your vinyl player that shows the cover of the playing song.
+
 ## Frontend
 
 Frontend is written in JS. There are two versions of layouts: with history and background (for the panel below the video) and without history and background (for being placed on top of the video).
