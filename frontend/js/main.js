@@ -2,10 +2,13 @@
 	var channelNumericalId = "0";
 	var tracksHistory = null;
     var _music_info_template_str = $("#music_info_template").html();
-    var _music_info_template = Handlebars.compile(_music_info_template_str);
+    //var _music_info_template = Handlebars.compile(_music_info_template_str);
     var _history_template_str = $("#history_template").html();
-    var _history_template = Handlebars.compile(_history_template_str);
+    //var _history_template = Handlebars.compile(_history_template_str);
 	var song = null;
+	var token = "";
+	var channelId;
+	var is_mobile = "mobile" == new URLSearchParams(window.location.search).get("platform");
     function show_song(song) {
 		song.thumb = song.song_link + "?thumb";
 		if(song.song_link.includes("youtu.be/")){
@@ -14,7 +17,7 @@
 		//var music_info_html = _music_info_template(song);
 		var music_info_html = Mustache.render(_music_info_template_str, song);
 		$('#music_info').html(music_info_html);
-		if(window.Twitch.configuration != undefined) {
+		if(window.Twitch.ext.configuration != undefined) {
 			if(song.artist.length > 17) {
 				$('#track-artist').css('font-size', '18px');
 			}
@@ -35,7 +38,7 @@
 				$('#track-title').css('font-size', '18px');
 				$('#track-artist').css('font-size', '16px');
 			}
-			if(song.title.length > 35) {
+			if(song.title.length > 35 || is_mobile) {
 				$('#track-title').css('font-size', '13px');
 				$('#track-artist').css('font-size', '11px');
 			}
@@ -84,17 +87,23 @@
 	}
 	function callback(target, contentType, message){
 			song = JSON.parse(message);
-			new_song(song, auth.channelId)
+			new_song(song, channelId)
 	}
-	if(window.Twitch.configuration != undefined) {
+	if(window.Twitch.ext.configuration != undefined) {
 		window.Twitch.ext.onAuthorized(function(auth) {
 		  console.log(auth);
 		  console.log('The JWT that will be passed to the EBS is', auth.token);
+		  token = auth.token;
 		  console.log('The channel ID is', auth.channelId);
+		  channelId = auth.channelId;
 		  window.Twitch.ext.unlisten("broadcast", callback);
 		  window.Twitch.ext.listen("broadcast", callback);
 		  
 			update_history(auth.channelId);
+			
+			if(document.getElementById("config-body") != null) {
+				configPage();
+			}
 		});
 	} else {
 		var sinceTime = (new Date(Date.now())).getTime();
@@ -150,3 +159,188 @@
 		while (s.length < (size || 2)) {s = "0" + s;}
 		return s;
 	}
+	
+	// The code below is executed only on the config page
+	// The server verifies the JWT and checks stuff like if the user is a broadcaster
+		
+	var configPageCalled = false;
+	function configPage() {
+		if(configPageCalled) return;
+		configPageCalled = true;
+		document.getElementById("haveToken-button").addEventListener("click", haveToken);
+		document.getElementById("signUp-button").addEventListener("click", signUp);
+		document.getElementById("back-button").addEventListener("click", back);
+		document.getElementById("saveToken-button").addEventListener("click", saveToken);
+		document.getElementById("copy-button").addEventListener("click", copyObsLink);
+		document.getElementById("copy-button2").addEventListener("click", copyWidgetLink);
+		$.ajax({
+		  url: "https://dashboard.audd.io/api/twitch.php?get_user",
+		  type: 'POST',
+		  data: {jwt: token},
+		  success: function(data) {
+			if(data[0]) {
+				configSuccess(data);
+				return;
+			}
+			$('#account-question').show();
+			if(data[1] != "no_user") console.log("A possible error with the JWT token");
+		  },
+		  dataType: "json",
+		});
+	}
+	
+	function haveToken() {
+		$('#account-question').hide();
+		$('#enter-token').show();
+	}
+	function back() {
+		$('#enter-token').hide();
+		$('#account-question').show();
+	}
+	
+	function signUp() {
+		$('#account-question').hide();
+		$.ajax({
+		  url: "https://dashboard.audd.io/api/twitch.php?signup",
+		  type: 'POST',
+		  data: {jwt: token},
+		  success: function(data) {
+			if(data[0]) {
+				$('#account-question').hide();
+				configSuccess(data);
+				return;
+			}
+			tokenSaveError(data);
+		  },
+		  error: function(data) {
+			// Don't send anything exteral to DOM
+			$("#error").text("Sorry, there was an error when we tried to send a request to our backend. Please try again later or contact our support: hello@audd.io."); 
+			$("#error").show();
+		  },
+		  dataType: "json",
+		});
+	}
+	function saveToken() {
+		$('#enter-token').hide();
+		var apiToken = $('#api-token').val();
+		$.ajax({
+		  url: "https://dashboard.audd.io/api/twitch.php?save_user",
+		  type: 'POST',
+		  data: {jwt: token, api_token: apiToken},
+		  success: function(data) {
+			if(data[0]) {
+				configSuccess(data);
+				return;
+			}
+			tokenSaveError(data);
+		  },
+		  dataType: "json",
+		});
+	}
+	
+	function getRenewalLink(userData) {		
+		var user_id = encodeURIComponent(userData.user_id);
+		var h_sign = encodeURIComponent(userData.payments_h);
+		
+		var payment_link = "https://payments.audd.io/?user_id="+user_id+"&h="+h_sign+"&action=make_streams_payment-1";
+		
+		// all the parameters are urlencoded and the link starts with https://
+		return payment_link;
+	}
+	var obsLink = "";
+	var widgetLink = "";
+	function configSuccess(apiData) {
+		$("#subscription-info-text").text("📅 Music recognition for the stream is active till");
+		$("#date-till").text(apiData[1].streams_till_text);
+		if(apiData[1].suggest_renewal) {
+			var payment_link = getRenewalLink(apiData[1]);
+			$("#renew-button").attr("href", payment_link);
+			$("#renew-button").show();
+		}
+		$("#subscription-info").show();
+		var uid = encodeURIComponent(apiData[1].twitch_id);
+		var obs_sign = encodeURIComponent(apiData[1].obs_sign);
+		obsLink = "https://api.audd.io/lastSong/obs/?uid="+uid+"&s="+obs_sign;
+		$("#obs-link-input").val(obsLink);
+		$("#obs-link").show();
+		widgetLink = "https://audd.tech/twitch/?ch="+uid;
+		$("#widget-link-input").val(widgetLink);
+		$("#widget-link").show();
+	}
+	function copyTextToClipboard(text) {
+	  var textArea = document.createElement("textarea");
+	  textArea.value = text;
+	  
+	  // Avoid scrolling to bottom
+	  textArea.style.top = "0";
+	  textArea.style.left = "0";
+	  textArea.style.position = "fixed";
+
+	  document.body.appendChild(textArea);
+	  textArea.focus();
+	  textArea.select();
+
+	  try {
+		var successful = document.execCommand('copy');
+		var msg = successful ? 'successful' : 'unsuccessful';
+		console.log('Fallback: Copying text command was ' + msg);
+	  } catch (err) {
+		console.error('Fallback: Oops, unable to copy', err);
+	  }
+
+	  document.body.removeChild(textArea);
+	}
+	function copyObsLink() {
+	  copyTextToClipboard(obsLink);
+	  $('#copy-button').text('Copied');
+	  setTimeout(() => { 
+		 $('#copy-button').text('Copy');
+	  }, 2000);
+	}
+	function copyWidgetLink() {
+	  copyTextToClipboard(widgetLink);
+	  $('#copy-button2').text('Copied');
+	  setTimeout(() => { 
+		 $('#copy-button2').text('Copy');
+	  }, 2000);
+	}
+	function tokenSaveError(apiData) {
+		// Don't send anything exteral to DOM
+		switch(apiData[1]) {
+			case "internal_error":
+				$("#error").text("Sorry, there was an internal error on our server. Please try again later or contact our support: hello@audd.io."); 
+				$("#error").show();
+				break;
+			case "no_jwt":
+				$("#error").text("Sorry, there was an error: we couldn't authorize the Twitch JWT on our backend. Please try again or contact our support: hello@audd.io"); 
+				$("#error").show();
+				break;
+			case "wrong_jwt":
+				$("#error").text("Sorry, there was an error: we couldn't authorize the Twitch JWT on our backend. Please try again or contact our support: hello@audd.io"); 
+				$("#error").show();
+				break;
+			case "no_token":
+				$("#error").text("Sorry, the api_token can't be empty."); 
+				$("#error").show();
+				break;
+			case "wrong_token":
+				$("#error").text("Sorry, we can't find a user with such api_token. If you think that's a mistake, please contact the API support: api@audd.io."); 
+				$("#error").show();
+				break;
+			case "zero_limit":
+				if(apiData[2].streams_till_text != undefined) {
+					$("#subscription-info-text").text("📅 Music recognition for the stream was active till");
+					$("#date-till").text(apiData[1].streams_till_text);
+				} else {
+					$("#subscription-info-text").text("Activate music recognition for streams for a month for $45. If you want to test our extension for free, let us know: hello@audd.io");
+					$("#renew-button").text("Activate for $45");
+				}
+				var payment_link = getRenewalLink(apiData[2]);
+				$("#renew-button").attr("href", payment_link);
+				$("#renew-button").show();
+				$("#subscription-info").show();
+				break;
+		}
+	}
+	
+	

@@ -47,6 +47,28 @@
       "orientation": "Portrait",
       "type": "component",
       "viewerType": "Broadcaster"
+    },
+    {
+      "channelId": "57165160",
+      "configurationAnchor": "panel",
+      "displayChannelName": "mishasamin",
+      "features": {
+        "isBitsEnabled": false,
+        "isChatEnabled": false,
+        "isSubscriptionStatusAvailable": false
+      },
+      "frameSize": {
+        "width": 375,
+        "height": 822
+      },
+      "id": "3",
+      "isPopout": false,
+      "label": "",
+      "linked": false,
+      "linkedUserId": "",
+      "orientation": "Landscape",
+      "type": "mobile",
+      "viewerType": "Broadcaster"
     }
   ],
   "manifest": {
@@ -57,14 +79,14 @@
     "canInstall": true,
     "configUrl": "https://localhost:8080/config.html",
     "configurationLocation": "none",
-    "description": "The extension shows the information about the song that's currently playing on the stream. It listens to the stream and recognizes all the music using the AudD Music Recognition API. Needs the recognition for the stream running in order to work.\n\nThe video component shows just the current song, the panel also shows the history. Every time there's a new song, the extension posts the information about the song to the chat.\n\nIf you like a song, click on the album cover, the headphones icon or the link in the chat to open the song page with links to all the streaming services where the song is available to listen to.",
-    "eulaTosUrl": "",
+    "description": "The extension shows the information about the song that's currently playing on the stream. It listens to the stream and recognizes all the music using the AudD Music Recognition API. Needs the recognition for the stream running in order to work.\n\nThe component shows just the current song, the panel shows both the current song and the history. Every time there's a new song, the extension posts the information about the new song to the chat. Please Configure the extension before activating.\n\nIf you like a song, click on the album cover, the headphones icon, or the link in the chat to open the song page with links to all the streaming services where the song is available to listen to.",
+    "eulaTosUrl": "https://audd.io/terms/",
     "hasChatSupport": true,
-    "iconUrl": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/logof7fc5ffa-4868-4af9-9cf4-bdff3a994370",
+    "iconUrl": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.3/logoe9742213-b81d-4122-9a54-42c2775cfaec",
     "iconUrls": {
-      "100x100": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/logof7fc5ffa-4868-4af9-9cf4-bdff3a994370",
-      "24x24": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/taskbar65eef291-0a6f-49c9-902e-7f14c133b7fc",
-      "300x200": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/discoveryaf7021e7-bdd5-480f-927d-e5e7f82a2e28"
+      "100x100": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.3/logoe9742213-b81d-4122-9a54-42c2775cfaec",
+      "24x24": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.3/taskbar1dd2062f-e902-4afc-af80-ff096bd6e78f",
+      "300x200": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.3/discovery4c19b496-e114-47f7-9c49-72e054700ba0"
     },
     "id": "ikcbah7wbue48v7doo4edulmxblt64",
     "installationCount": -42,
@@ -75,16 +97,18 @@
     "requestIdentityLink": false,
     "requiredBroadcasterAbilities": [],
     "screenshotUrls": [
-      "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/screenshot0bc5fde7-8b61-4e21-aa62-882bd03391eb"
+      "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.1/screenshot0bc5fde7-8b61-4e21-aa62-882bd03391eb",
+      "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.3/screenshot6f82e2b9-8b03-4740-a153-29c9fcd7bed9",
+      "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.3/screenshotd98e9961-45a6-45e1-a530-40b6a21d6cf0"
     ],
     "sku": "",
     "state": "Testing",
     "subscriptionsSupportLevel": "none",
-    "summary": "The extension shows what the song is currently playing on the stream. Based on the AudD Music recognition API.",
+    "summary": "Recognizes and shows the song that's playing on the stream. Powered by the AudD Music recognition API.",
     "supportEmail": "hello@audd.io",
     "vendorCode": "",
-    "version": "0.0.1",
-    "viewerSummary": "You can see what the song is currently playing on the stream. Click on the album cover to open a song you like on any streaming service",
+    "version": "0.0.3",
+    "viewerSummary": "Recognizes and shows the song that's currently playing on the stream. Click on the album cover to open a song you like on any music platform",
     "viewerUrl": "https://localhost:8080/panel.html",
     "viewerUrls": {
       "mobile": "https://localhost:8080/panel.html",

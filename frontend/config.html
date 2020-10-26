@@ -1,15 +1,14 @@
 <html class="no-touch"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <script src="js/jquery-3.3.1.min.js"></script>
-	<script type="text/javascript" src="js/handlebars-v4.0.10.js"></script>
-	<script type="text/javascript" src="js/mustache.min.js"></script>
 	<script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+    <script src="js/jquery-3.3.1.min.js"></script>
+	<script type="text/javascript" src="js/mustache.min.js"></script>
     <link type="text/css" rel="stylesheet" href="css/main.css">
     <title>AudD Music Recognition</title>
 	
 <script id="music_info_template" type="text/x-template">
-    <a href={{song_link}} target="_blank"><div class="album-art-bg" style="background-image: url(&quot;{{thumb}}&quot;);"></div><img class="album-art" src="{{thumb}}"><div class="status-label">Now Playing</div><i class="fas fa-external-link-alt external-icon"></i></a><div class="track-info-container"><div class="track-info"><div class="track-name-label"><a id="track-title">{{title}}</a><div class="whitespace">&nbsp;</div></div><div class="artist-name-label"><a id="track-artist">{{artist}}</a></div></div></div>
+    <a href={{song_link}} target="_blank"><div class="album-art-bg" style="background-image: url(&quot;{{thumb}}&quot;);"></div><img class="album-art" src="{{thumb}}"><div class="status-label">Now Playing</div><i class="fas fa-headphones-alt external-icon"></i></a><div class="track-info-container"><div class="track-info"><div class="track-name-label"><a id="track-title">{{title}}</a><div class="whitespace">&nbsp;</div></div><div class="artist-name-label"><a id="track-artist">{{artist}}</a></div></div></div>
 </script>
 <script id="history_template" type="text/x-template">
     {{#Elements}}<p>{{time}} <a href="{{song_link}}" target="_blank">{{artist}} - {{title}}</a></p>{{/Elements}}
@@ -17,12 +16,29 @@
 <link href="css/all.min.css" rel="stylesheet">
 <script type="text/javascript" src="js/main.js"></script>
 </head>
-<body class="is-desktop vsc-initialized">
-   <div id="app" style="margin:20px;color:white;">Preview: <div style="width:320px;height:300px;"><div class="extension-panel light"><div><div class="section-top" id="music_info"></div></div><div class="section-bottom history" id="history"></div></div></div></div>
+<body class="is-desktop vsc-initialized" style="background-color:#18181b;" id="config-body">
+   <div id="app" style="/*margin:20px;*/top:-10;color:white;"><p id="error" style="display: none;"></p><div id="account-question" style="display: none;"><p>Do you have an AudD account or API token?</p>
+   <button class="button button--outline button--secondary" id="haveToken-button">Yes</button> <button class="button button--outline button--primary" id="signUp-button">No</button></div>
+   <div id="enter-token" style="display: none;"><button class="button button--outline button--secondary" id="back-button">← Back</button><p>Enter your api_token:</p>
+    <input type="text" autocapitalize="off" autocorrect="off" value="" class="api-token-input" id="api-token" placeholder="api_token"></p>  <button class="button button--outline button--primary" id="saveToken-button">Save</button></div>
+   
+   <div id="subscription-info" style="display: none;"><p><span id="subscription-info-text"></span> <b><span id="date-till"></span></b>.</p>
+    <a href="" class="button button--outline button--primary" id="renew-button" style="display: none;" target="_blank">Renew the subscription</a></div>
+	
+   <div id="obs-link" style="display: none;"><p>Please add the following URL as a browser source in OBS or other compatible streaming software, so the extension works:</b></p>
+    <input type="text" autocapitalize="off" readonly autocorrect="off" value="" class="obs-link-input" id="obs-link-input"> <button class="button button--outline button--primary" id="copy-button">Copy</button></div>
+	
+   <div id="widget-link" style="display: none;"><p></p><p>Also, you can use a widget to display the playing song and its album cover inside the video stream in any way you want. (Please <b>do not</b> remove the browser source with URL from above if you add the widget).</b></p>
+    <input type="text" autocapitalize="off" readonly autocorrect="off" value="" class="obs-link-input" id="widget-link-input"> <button class="button button--outline button--secondary" id="copy-button2">Copy</button>
+	<p>If you want to configure the format of chat messages sent by the extension, contact us (hello@audd.io).</b></p></div>
+   <div class="margin-bottom--lg">
+
+</div>
+   <p>Preview:</p><div style="width:320px;height:300px;"><div class="extension-panel light"><div><div class="section-top" id="music_info"></div></div><div class="section-bottom history" id="history"></div></div></div>
+   </div>
    <noscript>
        You need to enable JavaScript to run this app.
    </noscript>
-<script type="text/javascript" src="./panel.bundle.js"></script>
 </body>
 
 </html>
