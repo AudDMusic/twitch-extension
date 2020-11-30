@@ -48,7 +48,7 @@
 		for(i = tracksHistory.Elements.length-1; i >= 0; i--) {
 			var element = tracksHistory.Elements[(i+tracksHistory.OldestElement)%tracksHistory.Elements.length]
 			if(element == null) continue;
-			var date = new Date(element.song_length+" +0300");
+			var date = dateFromString(element.song_length);
 			element.time = date.getHours().pad(2) + ":" + date.getMinutes().pad(2);
 			tempHistory.Elements.push(element)
 		}
@@ -341,6 +341,17 @@
 				$("#subscription-info").show();
 				break;
 		}
+	}
+
+	// For Safari compatibility, added this function to use instead of the default Date parsing
+	//Sources: https://stackoverflow.com/a/9413229, https://stackoverflow.com/a/1050782
+	function dateFromString(str) { 
+	  var a = $.map(str.split(/[^0-9]/), function(s) { return parseInt(s, 10) });
+	  return new Date(Date.UTC(a[0], a[1]-1 || 0, a[2] || 1, a[3] || 0, a[4] || 0, a[5] || 0, a[6] || 0)).addHours(-3); // the callbacks from AudD API are at UTC+3
+	}
+	Date.prototype.addHours = function(h) {
+	  this.setTime(this.getTime() + (h*60*60*1000));
+	  return this;
 	}
 	
 	
