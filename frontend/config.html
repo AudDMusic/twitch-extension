@@ -17,7 +17,7 @@
 <script type="text/javascript" src="js/main.js"></script>
 </head>
 <body class="is-desktop vsc-initialized" style="background-color:#18181b;" id="config-body">
-   <div id="app" style="/*margin:20px;*/top:-10;color:white;"><p id="error" style="display: none;"></p><div id="account-question" style="display: none;"><p>Do you have an AudD account or API token?</p>
+   <div id="app" style="/*margin:20px;top:-10;*/color:white;"><p id="error" style="display: none;"></p><div id="account-question" style="display: none;"><p>Do you have an AudD account or API token?</p>
    <button class="button button--outline button--secondary" id="haveToken-button">Yes</button> <button class="button button--outline button--primary" id="signUp-button">No</button></div>
    <div id="enter-token" style="display: none;"><button class="button button--outline button--secondary" id="back-button">← Back</button><p>Enter your api_token:</p>
     <input type="text" autocapitalize="off" autocorrect="off" value="" class="api-token-input" id="api-token" placeholder="api_token"></p>  <button class="button button--outline button--primary" id="saveToken-button">Save</button></div>
@@ -34,7 +34,9 @@
    <div class="margin-bottom--lg">
 
 </div>
+   <div id="preview" style="display: none;">
    <p>Preview:</p><div style="width:320px;height:300px;"><div class="extension-panel light"><div><div class="section-top" id="music_info"></div></div><div class="section-bottom history" id="history"></div></div></div>
+   </div>
    </div>
    <noscript>
        You need to enable JavaScript to run this app.

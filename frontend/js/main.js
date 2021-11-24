@@ -266,6 +266,7 @@
 		widgetLink = "https://audd.tech/twitch/?ch="+uid;
 		$("#widget-link-input").val(widgetLink);
 		$("#widget-link").show();
+		$("#preview").show();
 	}
 	function copyTextToClipboard(text) {
 	  var textArea = document.createElement("textarea");
@@ -330,7 +331,7 @@
 			case "zero_limit":
 				if(apiData[2].streams_till_text != undefined) {
 					$("#subscription-info-text").text("📅 Music recognition for the stream was active till");
-					$("#date-till").text(apiData[1].streams_till_text);
+					$("#date-till").text(apiData[2].streams_till_text); // fixed a bug 
 				} else {
 					$("#subscription-info-text").text("Activate music recognition for streams for a month for $45. If you want to test our extension for free, let us know: hello@audd.io");
 					$("#renew-button").text("Activate for $45");
@@ -342,9 +343,8 @@
 				break;
 		}
 	}
-
-	// For Safari compatibility, added this function to use instead of the default Date parsing
-	//Sources: https://stackoverflow.com/a/9413229, https://stackoverflow.com/a/1050782
+	
+	// For Safari compatibility, added this function to use instead of the default Date parsing. Sources: https://stackoverflow.com/a/9413229, https://stackoverflow.com/a/1050782
 	function dateFromString(str) { 
 	  var a = $.map(str.split(/[^0-9]/), function(s) { return parseInt(s, 10) });
 	  return new Date(Date.UTC(a[0], a[1]-1 || 0, a[2] || 1, a[3] || 0, a[4] || 0, a[5] || 0, a[6] || 0)).addHours(-3); // the callbacks from AudD API are at UTC+3
@@ -353,5 +353,3 @@
 	  this.setTime(this.getTime() + (h*60*60*1000));
 	  return this;
 	}
-	
-	

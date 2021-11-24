@@ -79,7 +79,7 @@
     "canInstall": true,
     "configUrl": "https://localhost:8080/config.html",
     "configurationLocation": "none",
-    "description": "The extension shows the information about the song that's currently playing on the stream. It listens to the stream and recognizes all the music using the AudD Music Recognition API. Needs the recognition for the stream running in order to work.\n\nThe component shows just the current song, the panel shows both the current song and the history. Every time there's a new song, the extension posts the information about the new song to the chat. Please Configure the extension before activating.\n\nIf you like a song, click on the album cover, the headphones icon, or the link in the chat to open the song page with links to all the streaming services where the song is available to listen to.",
+    "description": "The extension shows the information about the song that's currently playing on the stream. It listens to the stream and recognizes all the music using the AudD Music Recognition API. Requires the music recognition for the stream running in order to work.\n\nThe component shows just the current song; the panel shows both the current song and the history. Every time there's a new song, the extension posts the information about the new song to the chat. Please Configure the extension before activating it.\n\nIf you like a song, click on the album cover, the headphones icon, or the link in the chat to open the song page with links to all the streaming services where the song is available to listen to.",
     "eulaTosUrl": "https://audd.io/terms/",
     "hasChatSupport": true,
     "iconUrl": "https://extensions-discovery-images.twitch.tv/ikcbah7wbue48v7doo4edulmxblt64/0.0.3/logoe9742213-b81d-4122-9a54-42c2775cfaec",
@@ -104,10 +104,10 @@
     "sku": "",
     "state": "Testing",
     "subscriptionsSupportLevel": "none",
-    "summary": "Recognizes and shows the song that's playing on the stream. Powered by the AudD Music recognition API.",
+    "summary": "Identifies and shows the song from the audio playing on the stream. Powered by the AudD Music recognition API.",
     "supportEmail": "hello@audd.io",
     "vendorCode": "",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "viewerSummary": "Recognizes and shows the song that's currently playing on the stream. Click on the album cover to open a song you like on any music platform",
     "viewerUrl": "https://localhost:8080/panel.html",
     "viewerUrls": {
@@ -149,5 +149,6 @@
   "frontendCommand": "",
   "frontendFolderName": "B:\\AudD\\twitch\\extension",
   "name": "AudD music recognition",
-  "version": 2
+  "version": 3,
+  "usingRandomFrontendHostingPort": true
 }
