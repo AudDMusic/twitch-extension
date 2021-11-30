@@ -171,7 +171,7 @@
 		document.getElementById("signUp-button").addEventListener("click", signUp);
 		document.getElementById("back-button").addEventListener("click", back);
 		document.getElementById("saveToken-button").addEventListener("click", saveToken);
-		document.getElementById("copy-button").addEventListener("click", copyObsLink);
+		// document.getElementById("copy-button").addEventListener("click", copyObsLink);
 		document.getElementById("copy-button2").addEventListener("click", copyWidgetLink);
 		$.ajax({
 		  url: "https://dashboard.audd.io/api/twitch.php?get_user",
@@ -259,11 +259,11 @@
 		}
 		$("#subscription-info").show();
 		var uid = encodeURIComponent(apiData[1].twitch_id);
-		var obs_sign = encodeURIComponent(apiData[1].obs_sign);
-		obsLink = "https://api.audd.io/lastSong/obs/?uid="+uid+"&s="+obs_sign;
-		$("#obs-link-input").val(obsLink);
-		$("#obs-link").show();
-		widgetLink = "https://audd.tech/twitch/?ch="+uid;
+		// var obs_sign = encodeURIComponent(apiData[1].obs_sign);
+		// obsLink = "https://api.audd.io/lastSong/obs/?uid="+uid+"&s="+obs_sign;
+		// $("#obs-link-input").val(obsLink);
+		// $("#obs-link").show();
+		widgetLink = "https://widget.audd.tech/?ch="+uid;
 		$("#widget-link-input").val(widgetLink);
 		$("#widget-link").show();
 		$("#preview").show();

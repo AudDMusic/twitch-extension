@@ -25,17 +25,14 @@
    <div id="subscription-info" style="display: none;"><p><span id="subscription-info-text"></span> <b><span id="date-till"></span></b>.</p>
     <a href="" class="button button--outline button--primary" id="renew-button" style="display: none;" target="_blank">Renew the subscription</a></div>
 	
-   <div id="obs-link" style="display: none;"><p>Please add the following URL as a browser source in OBS or other compatible streaming software, so the extension works:</b></p>
-    <input type="text" autocapitalize="off" readonly autocorrect="off" value="" class="obs-link-input" id="obs-link-input"> <button class="button button--outline button--primary" id="copy-button">Copy</button></div>
-	
-   <div id="widget-link" style="display: none;"><p></p><p>Also, you can use a widget to display the playing song and its album cover inside the video stream in any way you want. (Please <b>do not</b> remove the browser source with URL from above if you add the widget).</b></p>
+   <div id="widget-link" style="display: none;"><p></p><p><b>You need to close the Configuration and Activate the extension by adding it as a Panel or a Component so it's visible on the broadcast page.</b></p><p>Once you start your stream, the extension will begin to identify and show the songs you broadcast.</p><p>You can also use a widget to display the playing song and its album cover on the stream. Here's the widget URL you can add as a browser source. (Add <i>&history</i> to it if you want it to display previously broadcasted songs).</b></p>
     <input type="text" autocapitalize="off" readonly autocorrect="off" value="" class="obs-link-input" id="widget-link-input"> <button class="button button--outline button--secondary" id="copy-button2">Copy</button>
 	<p>If you want to configure the format of chat messages sent by the extension, contact us (hello@audd.io).</b></p></div>
    <div class="margin-bottom--lg">
 
 </div>
    <div id="preview" style="display: none;">
-   <p>Preview:</p><div style="width:320px;height:300px;"><div class="extension-panel light"><div><div class="section-top" id="music_info"></div></div><div class="section-bottom history" id="history"></div></div></div>
+   <p>Preview:</p><div style="width:320px;height:300px;"><div class="extension-panel light"><div><div class="section-top" id="music_info"></div></div><div class="section-bottom history" id="history"><p>Once a song is identified, it will appear on the top of the extension. The history will be shown here, in the bottom part.</p></div></div></div>
    </div>
    </div>
    <noscript>
