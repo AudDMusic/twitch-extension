@@ -1,6 +1,6 @@
 # AudD Music Recognition Twitch extension
 
-The repository contains the source code for the [AudD Music Recognition Twitch extension](https://dashboard.twitch.tv/extensions/ikcbah7wbue48v7doo4edulmxblt64-0.0.1).
+The repository contains the source code for the [AudD Music Recognition Twitch extension](https://dashboard.twitch.tv/extensions/ikcbah7wbue48v7doo4edulmxblt64-0.0.4).
 
 The extension is based on [Music Recognition API](https://audd.io/).
 
