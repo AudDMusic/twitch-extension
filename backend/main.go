@@ -9,8 +9,8 @@ import (
 	"github.com/AudDMusic/audd-go"
 	tg "github.com/Syfaro/telegram-bot-api"
 	"github.com/cloudflare/tableflip"
-	"github.com/golang-jwt/jwt"
 	"github.com/getsentry/raven-go"
+	"github.com/golang-jwt/jwt"
 	"github.com/jcuga/golongpoll"
 	"github.com/nicklaw5/helix"
 	"golang.org/x/oauth2"
@@ -18,6 +18,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"runtime"
@@ -276,17 +277,19 @@ func (ch *KnownChannel) NewResult(v *audd.RecognitionResult, timestamp string) {
 	if capture(err) {
 		return
 	}
+	// Twitch Helix "Send Extension PubSub Message". The legacy
+	// api.twitch.tv/extensions/message/ endpoint no longer exists.
 	requestData := map[string]interface{}{
-		"content_type": "application/json",
-		"message":      string(resultEncoded),
-		"targets":      []string{"broadcast"},
+		"target":              []string{"broadcast"},
+		"broadcaster_id":      ch.NumericalId,
+		"is_global_broadcast": false,
+		"message":             string(resultEncoded),
 	}
 	requestBody, err := json.Marshal(requestData)
 	if capture(err) {
 		return
 	}
-	req, err := http.NewRequest("POST",
-		"https://api.twitch.tv/extensions/message/"+ch.NumericalId, bytes.NewBuffer(requestBody))
+	req, err := http.NewRequest("POST", "https://api.twitch.tv/helix/extensions/pubsub", bytes.NewBuffer(requestBody))
 	if capture(err) {
 		return
 	}
@@ -294,15 +297,15 @@ func (ch *KnownChannel) NewResult(v *audd.RecognitionResult, timestamp string) {
 	req.Header.Set("Authorization", "Bearer "+ch.jwt)
 	req.Header.Set("Client-Id", extensionClientId)
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
+	client := &http.Client{Timeout: 15 * time.Second}
 
 	// A request like the following will be performed
 	/* curl
 	-H "Authorization: Bearer [jwt]"
 	-H "Client-Id: [extensionClientId]"
 	-H "Content-Type: application/json"
-	-d '{"content_type":"application/json", "message":"{\"foo\":\"bar\"}", "targets":["broadcast"]}'
-	-X POST https://api.twitch.tv/extensions/message/57165160
+	-d '{"target":["broadcast"], "broadcaster_id":"57165160", "is_global_broadcast":false, "message":"{\"foo\":\"bar\"}"}'
+	-X POST https://api.twitch.tv/helix/extensions/pubsub
 	*/
 	resp, err := client.Do(req)
 	if capture(err) {
@@ -313,15 +316,19 @@ func (ch *KnownChannel) NewResult(v *audd.RecognitionResult, timestamp string) {
 		capture(fmt.Errorf("twitch status code error: %d %s", resp.StatusCode, resp.Status))
 	}
 
+	// Twitch Helix "Send Extension Chat Message". The extension version must
+	// be the one installed on the channel, or Twitch answers 404.
 	requestData = map[string]interface{}{
-		"text": text,
+		"text":              text,
+		"extension_id":      extensionClientId,
+		"extension_version": extensionVersion,
 	}
 	requestBody, err = json.Marshal(requestData)
 	if capture(err) {
 		return
 	}
 	req, err = http.NewRequest("POST",
-		"https://api.twitch.tv/extensions/"+extensionClientId+"/"+extensionVersion+"/channels/"+ch.NumericalId+"/chat",
+		"https://api.twitch.tv/helix/extensions/chat?broadcaster_id="+url.QueryEscape(ch.NumericalId),
 		bytes.NewBuffer(requestBody))
 	if capture(err) {
 		return
@@ -336,8 +343,8 @@ func (ch *KnownChannel) NewResult(v *audd.RecognitionResult, timestamp string) {
 	-H 'Authorization: Bearer [jwt]' \
 	-H 'Client-ID: [extensionClientId]' \
 	-H 'Content-Type: application/json' \
-	-d '{ "text": "This is a normal message." }' \
-	-X POST https://api.twitch.tv/extensions/[extensionClientId]/[extensionVersion]/channels/57165160/chat
+	-d '{"text":"This is a normal message.", "extension_id":"[extensionClientId]", "extension_version":"[extensionVersion]"}' \
+	-X POST 'https://api.twitch.tv/helix/extensions/chat?broadcaster_id=57165160'
 	*/
 	resp, err = client.Do(req)
 	if capture(err) {
