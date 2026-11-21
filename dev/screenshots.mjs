@@ -58,8 +58,9 @@ const shots = [
   ['after_panel_dark_empty-production-shape', panel('theme=dark&channel=empty-prod'), P],
   ['after_panel_dark_full-40-scrolled', panel('theme=dark&channel=full'), P, { scroll: '.history__scroll' }],
   ['after_panel_dark_new-song-arrives', panel('theme=dark&channel=push-demo&every=3'), P, { wait: 4200 }],
-  ['after_panel_dark_broadcaster-not-set-up', panel('theme=dark&role=broadcaster&account=none&channel=typical'), P],
-  ['after_panel_dark_broadcaster-expired', panel('theme=dark&role=broadcaster&account=expired&channel=typical'), P],
+  ['after_panel_dark_broadcaster-not-set-up', panel('theme=dark&role=broadcaster&account=none&channel=empty'), P],
+  ['after_panel_dark_broadcaster-expired', panel('theme=dark&role=broadcaster&account=expired&channel=stale'), P],
+  ['after_panel_dark_broadcaster-expiring', panel('theme=dark&role=broadcaster&account=expiring&channel=typical'), P],
   ['after_panel_light_broadcaster-unpaid', panel('theme=light&role=broadcaster&account=unpaid&channel=stale'), P],
   ['after_panel_dark_short-height-120', panel('theme=dark&channel=typical'), { w: 318, h: 120 }],
   ['after_panel_dark_tall-500', panel('theme=dark&channel=full'), { w: 318, h: 500 }],
@@ -75,11 +76,12 @@ const shots = [
   ['after_component_busy_playing', component('theme=dark&channel=typical', 'busy'), STAGE],
   ['after_component_dark_playing', component('theme=dark&channel=typical', 'dark'), STAGE],
   ['after_component_bright_just-played', component('theme=dark&channel=just', 'bright'), STAGE],
-  ['after_component_busy_stale-compact', component('theme=dark&channel=stale', 'busy'), STAGE],
+  ['after_component_busy_played-20-min-ago-compact', component('theme=dark&channel=recent', 'busy'), STAGE],
+  ['after_component_bright_played-3-hours-ago-hidden', component('theme=dark&channel=stale', 'bright'), STAGE],
   ['after_component_bright_long-strings', component('theme=dark&channel=long', 'bright'), STAGE],
   ['after_component_busy_no-cover', component('theme=dark&channel=nocover', 'busy'), STAGE],
-  ['after_component_dark_empty', component('theme=dark&channel=empty', 'dark'), STAGE],
-  ['after_component_bright_backend-down', component('theme=dark&channel=down', 'bright'), STAGE, { wait: 2500 }],
+  ['after_component_dark_empty-hidden', component('theme=dark&channel=empty', 'dark'), STAGE],
+  ['after_component_bright_backend-down-hidden', component('theme=dark&channel=down', 'bright'), STAGE, { wait: 2500 }],
   ['after_component_closeup_playing', `/ext/video_component.html?anchor=component&platform=web&theme=dark&channel=typical`, { w: 320, h: 160 }, { scale: 3, bodyBg: '#3b4a5c' }],
 
   // Hosted widget / OBS
@@ -211,7 +213,7 @@ async function runFlow(context, page, flow) {
   if (flow === 'pay-click' || flow === 'pay-complete') {
     const [payPage] = await Promise.all([
       context.waitForEvent('page'),
-      page.getByRole('link', { name: /Turn on for \$45/ }).click(),
+      page.getByRole('link', { name: /Turn on: \$45/ }).click(),
     ]);
     await payPage.waitForLoadState();
     if (flow === 'pay-complete') {

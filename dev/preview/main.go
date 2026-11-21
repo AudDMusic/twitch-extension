@@ -10,8 +10,8 @@
 //
 //	theme=dark|light        Twitch theme (onContext)
 //	channel=<scenario>      which songs the mock backend has (typical, just,
-//	                        stale, one, full, long, nocover, youtube, legacy,
-//	                        empty, empty-prod, down, slow, flaky)
+//	                        recent, stale, one, full, long, nocover, youtube,
+//	                        legacy, empty, empty-prod, down, slow, flaky)
 //	every=<seconds>         push a new song through PubSub this often
 //	role=viewer|broadcaster the role in the Twitch JWT
 //	account=<scenario>      the AudD account twitch.php reports (none, active,

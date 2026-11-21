@@ -188,6 +188,10 @@ func scenario(name, base string, now time.Time) []item {
 		for i := 9; i >= 0; i-- {
 			add(pick(i), 3*time.Hour+time.Duration(i*4)*time.Minute, 0, false)
 		}
+	case "recent":
+		for i := 9; i >= 0; i-- {
+			add(pick(i), 20*time.Minute+time.Duration(i*4)*time.Minute, 0, false)
+		}
 	case "full":
 		for i := 39; i >= 0; i-- {
 			add(pick(i), time.Duration(i)*47*time.Minute+30*time.Second, 0, false)
@@ -222,7 +226,16 @@ func scenario(name, base string, now time.Time) []item {
 func (h *harness) channel(name, base string) *channelState {
 	c := h.channels[name]
 	if c == nil {
-		c = &channelState{items: scenario(name, base, time.Now())}
+		// Configuration-page channels get songs that match their account:
+		// none since an unpaid account, old ones since an expired one.
+		kind := name
+		switch {
+		case strings.Contains(name, "unpaid"):
+			kind = "empty"
+		case strings.Contains(name, "expired"):
+			kind = "stale"
+		}
+		c = &channelState{items: scenario(kind, base, time.Now())}
 		h.channels[name] = c
 	}
 	return c
