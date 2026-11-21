@@ -86,11 +86,11 @@
       if (s.state === 'none') {
         view.setNote({ text: 'Songs aren’t being recognized: connect your AudD account on this extension’s Configure page in your Creator Dashboard.' });
       } else if (s.state === 'unpaid') {
-        view.setNote({ text: 'Turn on music recognition to show viewers the songs on your stream ($45 per month).', action: 'Turn on', href: link });
+        view.setNote({ text: 'Turn on music recognition to show viewers the songs on your stream ($45 per month).', action: 'Turn on ($45 per month)', href: link });
       } else if (s.state === 'expired') {
-        view.setNote({ text: 'Music recognition ended' + (s.account.tillText ? ' on ' + s.account.tillText : '') + ', so new songs don’t appear here.', action: 'Renew for $45', href: link });
+        view.setNote({ text: 'Music recognition ended' + (s.account.tillText ? ' on ' + s.account.tillText : '') + ', so new songs don’t appear here.', action: 'Renew ($45 per month)', href: link });
       } else if (s.state === 'active' && s.account.suggestRenewal) {
-        view.setNote({ text: 'Music recognition ends' + (s.account.tillText ? ' on ' + s.account.tillText : ' soon') + '.', action: 'Renew for $45', href: link });
+        view.setNote({ text: 'Music recognition ends' + (s.account.tillText ? ' on ' + s.account.tillText : ' soon') + '.', action: 'Renew ($45 per month)', href: link });
       }
     }).catch(function () { /* a note only; nothing to show when AudD can't be reached */ });
   }

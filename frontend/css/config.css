@@ -316,6 +316,16 @@ body {
   font-weight: 600;
 }
 
+.token-form .alert {
+  margin: 0 0 8px;
+}
+
+.token-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .input {
   width: 100%;
   min-height: 38px;
@@ -365,9 +375,8 @@ body {
 }
 
 .places li {
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  padding-left: 12px;
+  border-left: 3px solid var(--line-strong);
   color: var(--text-2);
 }
 

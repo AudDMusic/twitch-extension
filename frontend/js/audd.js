@@ -129,7 +129,7 @@
     if (link.indexOf(base) === 0) return link + (link.indexOf('?') < 0 ? '?thumb' : '&thumb');
     var yt = /^https?:\/\/(?:www\.)?youtu\.be\/([\w-]{6,20})/.exec(link) ||
       /^https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?(?:.*&)?v=([\w-]{6,20})/.exec(link);
-    if (yt) return (E.youtubeThumbBase || 'https://i3.ytimg.com/vi/') + yt[1] + '/hqdefault.jpg';
+    if (yt) return (E.youtubeThumbBase || 'https://i3.ytimg.com/vi/') + yt[1] + '/mqdefault.jpg';
     return null;
   }
 
@@ -511,10 +511,13 @@
     });
   }
 
-  function statusLine(status) {
-    return el('span', { class: 'status status--' + status.kind }, [
-      status.kind === 'now' ? equalizer() : null,
-      el('span', { class: 'status__text', text: status.label })
+  function statusLine(status, song) {
+    return el('span', { class: 'status-row' }, [
+      el('span', { class: 'status status--' + status.kind }, [
+        status.kind === 'now' ? equalizer() : null,
+        el('span', { class: 'status__text', text: status.label })
+      ]),
+      song.link ? el('span', { class: 'listen', 'aria-hidden': 'true' }, ['Listen', icon('open')]) : null
     ]);
   }
 
@@ -528,20 +531,19 @@
     }
     card.appendChild(cover(song, 'now__cover'));
     card.appendChild(el('span', { class: 'now__text' }, [
-      statusLine(status),
+      statusLine(status, song),
       el('span', { class: 'now__title', title: song.title, text: song.title }),
       song.artist ? el('span', { class: 'now__artist', title: song.artist, text: song.artist }) : null
     ]));
-    if (song.link) card.appendChild(el('span', { class: 'now__open', title: 'Open the song page' }, [icon('open')]));
     return card;
   }
 
-  // Earlier songs, newest first, under a heading for each day other than
-  // the day of the song above them ("Yesterday", "Thu, Nov 19").
-  function historyList(songs, now, above) {
+  // Earlier songs, newest first, under a heading for each day before today
+  // ("Yesterday", "Thu, Nov 19").
+  function historyList(songs, now) {
     var groups = el('div', { class: 'history__groups' });
     var list = null;
-    var day = above && above.playedAt ? dayKey(above.playedAt) : dayKey(now);
+    var day = dayKey(now);
     songs.forEach(function (song) {
       if (song.playedAt && dayKey(song.playedAt) !== day) {
         day = dayKey(song.playedAt);
@@ -693,7 +695,7 @@
       }
 
       if (phaseKey === 'error' && retryLabel) {
-        retryLabel.textContent = state.retryAt ? 'Trying again in ' + secondsLeft(state.retryAt) + ' s.' : '';
+        retryLabel.textContent = state.retryAt ? 'Trying again in ' + secondsLeft(state.retryAt) + (secondsLeft(state.retryAt) === 1 ? ' second.' : ' seconds.') : '';
       }
 
       if (phaseKey !== 'songs') return;
@@ -704,7 +706,8 @@
         var isNew = last.nowKey !== null && top.key !== last.nowKey;
         slots.now.textContent = '';
         slots.now.appendChild(nowCard(top, status, isNew ? 'is-new' : ''));
-        if (isNew || last.nowKey === null) announcer.textContent = status.label + ': ' + songLabel(top);
+        // Screen readers hear new songs, not the one already there on load.
+        if (isNew) announcer.textContent = status.label + ': ' + songLabel(top);
         last.nowKey = top.key;
         last.nowKind = status.kind;
       } else {
@@ -719,7 +722,7 @@
           var previous = last.listKeys == null ? null : last.listKeys.split('\n');
           slots.historyList.textContent = '';
           if (rest.length) {
-            var list = historyList(rest, now, top);
+            var list = historyList(rest, now);
             if (previous) {
               Array.prototype.forEach.call(list.querySelectorAll('li[data-key]'), function (li) {
                 if (previous.indexOf(li.getAttribute('data-key')) < 0) li.classList.add('is-new');
@@ -730,9 +733,36 @@
             slots.historyList.appendChild(el('p', { class: 'history__empty', text: 'Earlier songs will be listed here.' }));
           }
           last.listKeys = keys;
+          if (surface === 'widget') fitRows();
         }
       }
     }
+
+    function isOld(song, now) {
+      return !!song.playedAt && now - (song.playedAt + song.playLength * 1000) > 60 * 60000;
+    }
+
+    // The widget can't scroll: show only the rows that fit whole.
+    function fitRows() {
+      var box = slots.historyList;
+      if (!box) return;
+      var nodes = box.querySelectorAll('li, .history__day');
+      Array.prototype.forEach.call(nodes, function (n) { n.classList.remove('is-clipped'); });
+      var bottom = box.getBoundingClientRect().bottom;
+      var clipped = false;
+      Array.prototype.forEach.call(nodes, function (n) {
+        if (clipped || n.getBoundingClientRect().bottom > bottom + 0.5) {
+          clipped = true;
+          n.classList.add('is-clipped');
+        }
+      });
+      // A day heading with no row under it goes too.
+      Array.prototype.forEach.call(box.querySelectorAll('.history__day'), function (h) {
+        var list = h.nextElementSibling;
+        if (list && !list.querySelector('li:not(.is-clipped)')) h.classList.add('is-clipped');
+      });
+    }
+    if (surface === 'widget') window.addEventListener('resize', function () { fitRows(); });
 
     function renderComponent(state, now) {
       var songs = state.songs;
@@ -740,7 +770,7 @@
       var status = top ? songStatus(top, now) : null;
       var key;
       if (!top) key = state.phase;
-      else key = top.key + '|' + (status.kind === 'past' ? 'compact' : 'full');
+      else key = top.key + '|' + (status.kind !== 'past' ? 'full' : isOld(top, now) ? 'hidden' : 'compact');
       if (key === last.nowKey) {
         var label = body.querySelector('.status__text');
         if (label && status) label.textContent = status.label;
@@ -749,12 +779,10 @@
       var isNew = !!top && last.nowKey !== null && last.nowKey.indexOf(top.key) !== 0;
       last.nowKey = key;
       body.textContent = '';
-      if (!top) {
-        if (state.phase === 'loading') return;
-        body.appendChild(el('p', { class: 'pill' }, [icon('note'),
-          el('span', { text: state.phase === 'error' ? 'Can’t load songs right now' : 'No song recognized yet' })]));
-        return;
-      }
+      // Over live video, show nothing rather than a message the viewer can't
+      // act on: no song yet, loading, the backend unreachable, or a song
+      // from more than an hour ago.
+      if (!top || isOld(top, now)) return;
       body.appendChild(nowCard(top, status, (status.kind === 'past' ? 'now--compact' : 'now--full') + (isNew ? ' is-new' : '')));
     }
 

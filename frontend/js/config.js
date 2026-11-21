@@ -21,7 +21,7 @@
     wrong_jwt: 'AudD couldn’t confirm your Twitch session. Reload this page and try again; if it keeps happening, email hello@audd.io.',
     not_broadcaster: 'Only the channel’s broadcaster can connect an AudD account here.',
     no_token: 'Paste your API token first.',
-    wrong_token: 'No AudD account has this API token. Copy it again from dashboard.audd.io; if it still doesn’t work, email api@audd.io.',
+    wrong_token: 'No AudD account has this API token. Copy it again from dashboard.audd.io; if it still doesn’t work, email hello@audd.io.',
     signin_unavailable: 'Signing in with AudD isn’t available right now. Paste your API token instead: it’s on dashboard.audd.io.',
     rate_limited: 'Too many sign-in attempts from your network. Wait a few minutes, then try again.',
     access_denied: 'The sign-in was declined on the AudD page. Start again when you’re ready.',
@@ -135,7 +135,7 @@
       box.appendChild(el('p', { class: 'ok-line' }, [icon('check'), 'Your AudD account is connected to this channel.']));
       box.appendChild(el('p', {}, [el('button', {
         class: 'link-button', type: 'button',
-        on: { click: function () { model.account = 'none'; model.connect = 'choose'; model.error = null; render(); } }
+        on: { click: function () { model.account = 'none'; model.switching = true; model.connect = 'choose'; model.error = null; render(); } }
       }, 'Connect a different AudD account')]));
       return;
     }
@@ -155,10 +155,16 @@
       el('button', { class: 'button button--primary button--signin', type: 'button', disabled: busy, on: { click: startSignIn } }, 'Sign in with AudD')
     ]));
     if (model.error && model.error.where === 'account') box.appendChild(alertBox(model.error.code));
+    if (model.switching) {
+      box.appendChild(el('p', {}, [el('button', {
+        class: 'link-button', type: 'button', disabled: busy,
+        on: { click: function () { model.switching = false; loadAccount(); } }
+      }, 'Keep the account that\u2019s connected now')]));
+    }
     box.appendChild(el('ul', { class: 'alt-paths' }, [
       el('li', {}, ['New to AudD? ', model.busy === 'signup'
         ? el('span', { class: 'status-line status-line--inline' }, [AudD.spinner(), 'Creating your account…'])
-        : el('button', { class: 'link-button', type: 'button', disabled: busy, on: { click: signUp } }, 'Create an AudD account for this channel')]),
+        : el('button', { class: 'link-button', type: 'button', disabled: busy, on: { click: signUp } }, 'Create an AudD account')]),
       el('li', {}, ['Have an API token? ', el('button', {
         class: 'link-button', type: 'button', disabled: busy,
         on: { click: function () { model.connect = 'token'; model.error = null; render(); focusLater('#api-token'); } }
@@ -168,16 +174,25 @@
 
   function tokenForm() {
     var error = model.error && model.error.where === 'token' ? model.error.code : null;
+    // Hidden like a password: streamers often set up on camera.
     var input = el('input', {
-      class: 'input', id: 'api-token', name: 'api-token', type: 'text', autocomplete: 'off', spellcheck: 'false',
+      class: 'input', id: 'api-token', name: 'api-token', type: 'password', autocomplete: 'off', spellcheck: 'false',
       autocapitalize: 'off', 'aria-describedby': 'api-token-hint' + (error ? ' api-token-error' : ''),
       'aria-invalid': error ? 'true' : null
     });
     if (model.tokenDraft) input.value = model.tokenDraft;
     input.addEventListener('input', function () { model.tokenDraft = input.value; });
+    var reveal = el('button', { class: 'button button--small', type: 'button', 'aria-controls': 'api-token', 'aria-pressed': 'false' }, 'Show');
+    reveal.addEventListener('click', function () {
+      var show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      reveal.textContent = show ? 'Hide' : 'Show';
+      reveal.setAttribute('aria-pressed', show ? 'true' : 'false');
+    });
     var form = el('form', { class: 'token-form', novalidate: true }, [
+      model.error && model.error.where === 'account' ? alertBox(model.error.code) : null,
       el('label', { for: 'api-token', text: 'API token' }),
-      input,
+      el('div', { class: 'token-field' }, [input, reveal]),
       error ? el('p', { class: 'field-error', id: 'api-token-error', role: 'alert', text: message(error) }) : null,
       el('p', { class: 'hint', id: 'api-token-hint' }, ['It’s on the main page of ', el('a', { href: E.dashboard, target: '_blank', rel: 'noopener noreferrer' }, 'dashboard.audd.io'), '.']),
       el('div', { class: 'actions' }, [
@@ -190,7 +205,6 @@
         }, [icon('back'), 'Back'])
       ])
     ]);
-    if (model.error && model.error.where === 'account') form.appendChild(alertBox(model.error.code));
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       saveToken(input.value.trim(), 'token');
@@ -248,7 +262,7 @@
     box.textContent = '';
     if (model.account !== 'connected') {
       setStep(nodes.stepRecognition, 'todo');
-      box.appendChild(el('p', { text: 'It costs ' + PRICE + ' per month for your stream. You can turn it on once your account is connected.' }));
+      box.appendChild(el('p', { text: 'Music recognition for your stream costs ' + PRICE + ' per month. You can turn it on once your account is connected.' }));
       return;
     }
     var a = model.info || {};
@@ -263,24 +277,24 @@
 
     if (model.recognition === 'active') {
       setStep(nodes.stepRecognition, a.suggestRenewal ? 'attention' : 'done');
-      box.appendChild(el('p', { class: 'ok-line' }, [icon('check'),
+      box.appendChild(el('p', { class: 'ok-line' }, [a.suggestRenewal ? null : icon('check'),
         a.tillText ? 'Music recognition is on until ' + a.tillText + '.' : 'Music recognition is on.']));
       if (model.justPaid) box.appendChild(el('p', { text: 'Payment received. Thank you!' }));
       if (a.suggestRenewal) {
-        box.appendChild(el('p', { text: 'It ends soon. Renew to keep showing songs without a gap: ' + PRICE + ' for another month.' }));
-        box.appendChild(el('div', { class: 'actions' }, [payButton('Renew for ' + PRICE)]));
+        box.appendChild(el('p', { text: 'It ends soon. Renew to keep showing songs without a gap.' }));
+        box.appendChild(el('div', { class: 'actions' }, [payButton('Renew: ' + PRICE + ' per month')]));
       }
     } else {
       setStep(nodes.stepRecognition, 'current');
       if (model.recognition === 'expired') {
         box.appendChild(el('p', {}, [
           'Music recognition ended' + (a.tillText ? ' on ' : ''), a.tillText ? el('strong', { text: a.tillText }) : null,
-          '. Viewers still see the songs from before, but new ones aren’t recognized. Renew for one month: ' + PRICE + '.'
+          '. Viewers still see the songs from before, but new ones aren’t recognized.'
         ]));
-        box.appendChild(el('div', { class: 'actions' }, [payButton('Renew for ' + PRICE)]));
+        box.appendChild(el('div', { class: 'actions' }, [payButton('Renew: ' + PRICE + ' per month')]));
       } else {
-        box.appendChild(el('p', { text: 'AudD listens to your stream and recognizes the music while you’re live: ' + PRICE + ' for one month.' }));
-        box.appendChild(el('div', { class: 'actions' }, [payButton('Turn on for ' + PRICE)]));
+        box.appendChild(el('p', { text: 'AudD listens to your stream and recognizes the music while you’re live. It costs ' + PRICE + ' per month for your stream.' }));
+        box.appendChild(el('div', { class: 'actions' }, [payButton('Turn on: ' + PRICE + ' per month')]));
         box.appendChild(el('p', { class: 'hint' }, ['Want to test it for free first? Email ', el('a', { href: 'mailto:hello@audd.io', target: '_blank', rel: 'noopener' }, 'hello@audd.io'), '.']));
       }
     }
@@ -305,7 +319,7 @@
     box.appendChild(el('p', { text: 'Go back to My Extensions, click Activate on AudD Music Recognition, and choose where it goes:' }));
     box.appendChild(el('ul', { class: 'places' }, [
       el('li', {}, [el('strong', { text: 'Panel' }), 'Below your video: the song playing now and the songs before it.']),
-      el('li', {}, [el('strong', { text: 'Component' }), 'Over your video: the song playing now. Viewers can hide it.'])
+      el('li', {}, [el('strong', { text: 'Component' }), 'Over your video: the song playing now.'])
     ]));
     box.appendChild(el('p', { text: 'Each recognized song is also posted to your chat.' }));
   }
@@ -407,6 +421,7 @@
     }
     var wasActive = model.recognition === 'active';
     model.account = 'connected';
+    model.switching = false;
     model.recognition = s.state;
     model.info = s.account;
     model.connect = 'choose';
@@ -577,7 +592,12 @@
       }
       var code = oauthCode(r);
       if (code === 'authorization_pending') { pollLater(run); return; }
-      if (code === 'slow_down') { s.interval += 5; pollLater(run); return; }
+      if (code === 'slow_down' || r.status === 429 || r.status >= 500) {
+        // Asked to poll less often, or the server failed: wait longer.
+        s.interval += 5;
+        pollLater(run);
+        return;
+      }
       signInFailed(code);
     }).catch(function () {
       // The network or the server failed: keep trying until the code expires.

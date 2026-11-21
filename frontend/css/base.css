@@ -14,8 +14,8 @@
   --line: rgba(255, 255, 255, 0.1);
   --line-strong: rgba(255, 255, 255, 0.22);
   --accent: #ff8fa3;          /* "Now playing" on dark */
-  --brand: #f21b4f;           /* AudD red, for filled buttons */
-  --brand-hover: #ff3463;
+  --brand: #d4083b;           /* AudD red, for filled buttons (white text 5.4:1) */
+  --brand-hover: #e31048;
   --on-brand: #ffffff;
   --focus: #bf94ff;
   --ok: #5fd09b;
@@ -23,7 +23,7 @@
   --warn-line: rgba(255, 196, 80, 0.45);
   --error: #ff8a8a;
   --error-bg: rgba(255, 90, 90, 0.12);
-  --skeleton: rgba(255, 255, 255, 0.08);
+  --skeleton: rgba(255, 255, 255, 0.1);
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   --logo-filter: none;
   color-scheme: dark;
@@ -49,7 +49,7 @@
   --warn-line: rgba(190, 120, 0, 0.5);
   --error: #b3001b;
   --error-bg: rgba(200, 0, 30, 0.08);
-  --skeleton: rgba(0, 0, 0, 0.07);
+  --skeleton: rgba(0, 0, 0, 0.08);
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
   --logo-filter: invert(1);
   color-scheme: light;

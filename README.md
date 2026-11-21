@@ -5,7 +5,7 @@ The source code of the [AudD Music Recognition Twitch extension](https://dashboa
 ## What's in the extension
 
 - **Panel** (`frontend/panel.html`), below the video and in the Twitch mobile app: the song playing now, with cover art and a link to the song page, and the songs played before it. Follows Twitch's light and dark themes.
-- **Video component** (`frontend/video_component.html`), over the video: the song playing now, in the dark overlay style of Twitch's player controls. A song that played a while ago shrinks to one line.
+- **Video component** (`frontend/video_component.html`), over the video: the song playing now, in the dark overlay style of Twitch's player controls. A song that played a while ago shrinks to one line; with no song from the last hour, or while the backend can't be reached, nothing is drawn over the video.
 - **Configuration page** (`frontend/config.html`), in the Creator Dashboard: the streamer connects an AudD account (Sign in with AudD, a new account, or a pasted API token), turns on recognition for the stream, and gets the address of the OBS widget. A preview shows the panel with the channel's real songs.
 - **Hosted widget** (the same `panel.html` at [widget.audd.tech](https://widget.audd.tech/)), for OBS browser sources.
 
@@ -57,7 +57,7 @@ Then open http://127.0.0.1:8787/ for a gallery of every view in every state, lig
 | Parameter | Values |
 |---|---|
 | `theme` | `dark`, `light` (what Twitch's `onContext` reports) |
-| `channel` | the songs the mock backend has: `typical`, `just`, `stale`, `one`, `full`, `long`, `nocover`, `youtube`, `legacy`, `empty`, `empty-prod`, `slow`, `down`, `flaky` |
+| `channel` | the songs the mock backend has: `typical`, `just`, `recent`, `stale`, `one`, `full`, `long`, `nocover`, `youtube`, `legacy`, `empty`, `empty-prod`, `slow`, `down`, `flaky` |
 | `every` | push a new song through PubSub every N seconds |
 | `role` | `viewer`, `broadcaster` |
 | `account` | what `twitch.php` reports: `none`, `active`, `expiring`, `expired`, `unpaid`, `error-<code>`, `down`, `slow` |
@@ -118,7 +118,7 @@ location /lastSong/ {
 
 To pass the client's IP to the service, add `proxy_set_header X-Real-IP $remote_addr;` inside the `location`.
 
-The service uses [Cloudflare's tableflip](https://github.com/cloudflare/tableflip) to restart on SIGHUP without dropping requests. tableflip doesn't support Windows, so the build fails there; to run the service on Windows, remove the tableflip code from `startServer`.
+The service uses [Cloudflare's tableflip](https://github.com/cloudflare/tableflip) to restart on SIGHUP without dropping requests. tableflip doesn't support Windows: the service builds there, but stops at startup with "tableflip: platform does not support graceful restart". To run it on Windows, remove the tableflip code from `startServer`.
 
 ## Twitch console settings
 
