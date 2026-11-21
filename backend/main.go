@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -54,6 +55,9 @@ import (
 
   By the way, routes support comma-separated values, e.g. you can send the results from a stream to
  "username1,username3,youtube:[video id]" instead of just "username1"
+
+  A route is a Twitch login. To name a channel by its numeric Twitch ID instead, prefix it with "id:", e.g.
+ {"1":"id:57165160"}. A route without the prefix is always looked up as a login, even if it's all digits.
 */
 
 /*
@@ -160,28 +164,36 @@ func processResult(result audd.RecognitionResult, chId, timestamp string, playLe
 	ch.publish(item, chatText)
 }
 
-// lookUpTwitchUser finds the Twitch user a route names: a login, or a numeric
-// channel ID (tried first when the route is all digits).
+// twitchIDRoutePrefix marks a route that names a numeric Twitch channel ID
+// instead of a login, e.g. {"1":"id:57165160"}. A route without it is always
+// a login, even when it is all digits, so a route is never guessed.
+const twitchIDRoutePrefix = "id:"
+
+// routeUsersParams returns the Twitch user lookup a route asks for.
+func routeUsersParams(route string) (*helix.UsersParams, error) {
+	if id, ok := strings.CutPrefix(route, twitchIDRoutePrefix); ok {
+		if _, err := strconv.ParseUint(id, 10, 64); err != nil || id == "" {
+			return nil, fmt.Errorf("route %q: a Twitch channel ID after %q must be digits", route, twitchIDRoutePrefix)
+		}
+		return &helix.UsersParams{IDs: []string{id}}, nil
+	}
+	return &helix.UsersParams{Logins: []string{route}}, nil
+}
+
+// lookUpTwitchUser finds the Twitch user a route names.
 func lookUpTwitchUser(route string) (*helix.User, error) {
-	params := []*helix.UsersParams{{Logins: []string{route}}}
-	if _, err := strconv.ParseUint(route, 10, 64); err == nil {
-		params = []*helix.UsersParams{{IDs: []string{route}}, {Logins: []string{route}}}
+	params, err := routeUsersParams(route)
+	if err != nil {
+		return nil, err
 	}
-	var lastErr error
-	for _, p := range params {
-		resp, err := TwitchClient.GetUsers(p)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if len(resp.Data.Users) > 0 {
-			return &resp.Data.Users[0], nil
-		}
+	resp, err := TwitchClient.GetUsers(params)
+	if err != nil {
+		return nil, err
 	}
-	if lastErr != nil {
-		return nil, lastErr
+	if len(resp.Data.Users) == 0 {
+		return nil, fmt.Errorf("got empty users from Twitch for %q", route)
 	}
-	return nil, fmt.Errorf("got empty users from Twitch for %q", route)
+	return &resp.Data.Users[0], nil
 }
 
 // Retrieves the last song
@@ -216,6 +228,16 @@ type Songs struct {
 	Results    []audd.RecognitionResult `json:"results"`
 }
 
+// callbackSecretMatches compares the secret from a callback URL in constant
+// time. With callbacksSecret empty every callback is refused: anyone could
+// post songs to any channel otherwise.
+func callbackSecretMatches(got string) bool {
+	if callbacksSecret == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(callbacksSecret)) == 1
+}
+
 // Handles the callbacks
 func callbacksHandler(w http.ResponseWriter, r *http.Request) {
 	raven.SetHttpContext(raven.NewHttp(r))
@@ -224,7 +246,8 @@ func callbacksHandler(w http.ResponseWriter, r *http.Request) {
 	if capture(err) {
 		return
 	}
-	if r.URL.Query().Get("secret") != callbacksSecret {
+	if !callbackSecretMatches(r.URL.Query().Get("secret")) {
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	var callback SuccessResult
@@ -552,6 +575,10 @@ func addCorsHeaders(fn http.HandlerFunc) http.HandlerFunc {
 // Starts the server
 func startServer() {
 	var err error
+	if callbacksSecret == "" {
+		fmt.Println("callbacksSecret is empty: every callback will be refused with 403. Set it and pass ?secret=... in the callback URL.")
+		capture(fmt.Errorf("callbacksSecret is empty; callbacks are refused"))
+	}
 	extensionSecret, err = base64.StdEncoding.DecodeString(extensionSecretBase64)
 	if capture(err) {
 		panic(err)

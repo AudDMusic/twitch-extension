@@ -64,3 +64,63 @@ func TestRotatedQueueWraps(t *testing.T) {
 		t.Fatalf("unexpected ring contents")
 	}
 }
+
+func TestRouteUsersParams(t *testing.T) {
+	cases := []struct {
+		route   string
+		logins  []string
+		ids     []string
+		wantErr bool
+	}{
+		{route: "monstercat", logins: []string{"monstercat"}},
+		// All-digit routes stay logins: no guessing which channel was meant.
+		{route: "57165160", logins: []string{"57165160"}},
+		{route: "id:57165160", ids: []string{"57165160"}},
+		{route: "id:", wantErr: true},
+		{route: "id:monstercat", wantErr: true},
+		{route: "id:-1", wantErr: true},
+	}
+	for _, c := range cases {
+		p, err := routeUsersParams(c.route)
+		if c.wantErr {
+			if err == nil {
+				t.Errorf("%q: want an error, got %+v", c.route, p)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%q: %v", c.route, err)
+			continue
+		}
+		if !equal(p.Logins, c.logins) || !equal(p.IDs, c.ids) {
+			t.Errorf("%q: logins %v ids %v, want logins %v ids %v", c.route, p.Logins, p.IDs, c.logins, c.ids)
+		}
+	}
+}
+
+func equal(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestCallbackSecretRefusedWhenEmpty(t *testing.T) {
+	// callbacksSecret is empty in the repository: nothing may pass.
+	if callbacksSecret == "" {
+		for _, s := range []string{"", "anything"} {
+			if callbackSecretMatches(s) {
+				t.Errorf("secret %q accepted with an empty callbacksSecret", s)
+			}
+		}
+		return
+	}
+	if !callbackSecretMatches(callbacksSecret) || callbackSecretMatches(callbacksSecret+"x") {
+		t.Error("constant-time comparison is wrong")
+	}
+}
