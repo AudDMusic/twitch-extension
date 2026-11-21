@@ -9,7 +9,7 @@ import (
 	"github.com/AudDMusic/audd-go"
 	tg "github.com/Syfaro/telegram-bot-api"
 	"github.com/cloudflare/tableflip"
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	"github.com/getsentry/raven-go"
 	"github.com/jcuga/golongpoll"
 	"github.com/nicklaw5/helix"
