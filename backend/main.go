@@ -119,7 +119,7 @@ func newJwt(chIntId string) (string, error) {
 	return token.SignedString(extensionSecret)
 }
 
-func processResult(result audd.RecognitionResult, chId, timestamp string) {
+func processResult(result audd.RecognitionResult, chId, timestamp string, playLength int) {
 	result.SongLength = GetResultText(result, false, true, 280)
 	mu.Lock()
 	lastSong[chId] = result
@@ -155,9 +155,9 @@ func processResult(result audd.RecognitionResult, chId, timestamp string) {
 	// it is released, so slow Twitch requests don't block the read handlers.
 	knownChannelsMu.Lock()
 	ch := knownChannels[chIntId]
-	chatText := ch.addResult(&result, timestamp)
+	item, chatText := ch.addResult(result, timestamp, playLength)
 	knownChannelsMu.Unlock()
-	ch.publish(&result, chatText)
+	ch.publish(item, chatText)
 }
 
 // lookUpTwitchUser finds the Twitch user a route names: a login, or a numeric
@@ -267,23 +267,52 @@ func callbacksHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// by default, send the results to the Twitch channel specified in the route
-		processResult(callback.Result.Results[0], route, callback.Result.Timestamp)
+		processResult(callback.Result.Results[0], route, callback.Result.Timestamp, callback.Result.PlayLength)
 		continue
 	}
 }
 
+// HistoryItem is a song as the extension receives it: the AudD result, with
+// SongLength holding the AudD callback timestamp text (read by extension
+// versions before 0.1.0), plus the same time as a Unix timestamp and the play
+// length.
+type HistoryItem struct {
+	audd.RecognitionResult
+	// PlayedAt is the AudD callback timestamp in Unix seconds (0 if it
+	// couldn't be parsed).
+	PlayedAt int64 `json:"played_at,omitempty"`
+	// PlayLength is how long the song played, in seconds. AudD sends it when
+	// callbacks come after a song ends (the default); with callbacks=before it
+	// is absent.
+	PlayLength int `json:"play_length,omitempty"`
+}
+
+// The format and time zone of the "timestamp" field of AudD stream callbacks.
+const auddTimestampLayout = "2006-01-02 15:04:05"
+
+var auddTimestampZone = time.UTC
+
+func newHistoryItem(result audd.RecognitionResult, timestamp string, playLength int) *HistoryItem {
+	item := &HistoryItem{RecognitionResult: result, PlayLength: playLength}
+	item.SongLength = timestamp
+	if t, err := time.ParseInLocation(auddTimestampLayout, timestamp, auddTimestampZone); err == nil {
+		item.PlayedAt = t.Unix()
+	}
+	return item
+}
+
 type RotatedQueue struct {
 	OldestElement int
-	Elements      []*audd.RecognitionResult
+	Elements      []*HistoryItem
 }
 
 func NewRotatedQueue(cap int) *RotatedQueue {
 	return &RotatedQueue{
-		Elements: make([]*audd.RecognitionResult, cap, cap),
+		Elements: make([]*HistoryItem, cap, cap),
 	}
 }
 
-func (q *RotatedQueue) AddElement(v *audd.RecognitionResult) {
+func (q *RotatedQueue) AddElement(v *HistoryItem) {
 	q.Elements[q.OldestElement] = v
 	q.OldestElement = (q.OldestElement + 1) % cap(q.Elements)
 }
@@ -297,19 +326,19 @@ type KnownChannel struct {
 	jwt         string
 }
 
-// addResult stores a new result in the history and returns the chat text.
-// The caller must hold knownChannelsMu for writing.
-func (ch *KnownChannel) addResult(v *audd.RecognitionResult, timestamp string) string {
-	text := v.SongLength // Text for the chat
-	v.SongLength = timestamp
-	ch.History.AddElement(v)
-	return text
+// addResult stores a new result in the history and returns it with the chat
+// text. The caller must hold knownChannelsMu for writing.
+func (ch *KnownChannel) addResult(result audd.RecognitionResult, timestamp string, playLength int) (*HistoryItem, string) {
+	text := result.SongLength // Text for the chat
+	item := newHistoryItem(result, timestamp, playLength)
+	ch.History.AddElement(item)
+	return item, text
 }
 
 // publish sends a new result to longpoll clients, to the connected extensions
 // and to the Twitch live chat. It must be called without holding
 // knownChannelsMu: it waits on Twitch.
-func (ch *KnownChannel) publish(v *audd.RecognitionResult, text string) {
+func (ch *KnownChannel) publish(v *HistoryItem, text string) {
 	if LongPollManager != nil {
 		capture(LongPollManager.Publish(ch.NumericalId, v))
 	}
