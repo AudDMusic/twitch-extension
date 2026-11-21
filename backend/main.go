@@ -128,35 +128,60 @@ func processResult(result audd.RecognitionResult, chId, timestamp string) {
 	chIntId, isSet := channelsStringToInt[chId]
 	knownChannelsMu.RUnlock()
 	if !isSet {
-		resp, err := TwitchClient.GetUsers(&helix.UsersParams{
-			Logins: []string{chId},
-		})
+		user, err := lookUpTwitchUser(chId)
 		if capture(err) {
 			return
 		}
-		if len(resp.Data.Users) == 0 {
-			capture(fmt.Errorf("got empty users from Twitch"))
-			return
-		}
-		chIntId = resp.Data.Users[0].ID
-		knownChannelsMu.Lock()
-		channelsStringToInt[chId] = chIntId
+		chIntId = user.ID
 		tokenString, err := newJwt(chIntId)
 		if capture(err) {
-			knownChannelsMu.Unlock()
 			return
 		}
-		knownChannels[chIntId] = &KnownChannel{
-			NumericalId: chIntId,
-			StringId:    chId,
-			History:     NewRotatedQueue(historyCap),
-			jwt:         tokenString,
+		knownChannelsMu.Lock()
+		channelsStringToInt[chId] = chIntId
+		// Another callback may have added the channel while we asked Twitch;
+		// keep its history instead of replacing it with an empty one.
+		if _, exists := knownChannels[chIntId]; !exists {
+			knownChannels[chIntId] = &KnownChannel{
+				NumericalId: chIntId,
+				StringId:    chId,
+				History:     NewRotatedQueue(historyCap),
+				jwt:         tokenString,
+			}
 		}
 		knownChannelsMu.Unlock()
 	}
+	// Only the history update holds the lock; sending to Twitch happens after
+	// it is released, so slow Twitch requests don't block the read handlers.
 	knownChannelsMu.Lock()
-	knownChannels[chIntId].NewResult(&result, timestamp)
+	ch := knownChannels[chIntId]
+	chatText := ch.addResult(&result, timestamp)
 	knownChannelsMu.Unlock()
+	ch.publish(&result, chatText)
+}
+
+// lookUpTwitchUser finds the Twitch user a route names: a login, or a numeric
+// channel ID (tried first when the route is all digits).
+func lookUpTwitchUser(route string) (*helix.User, error) {
+	params := []*helix.UsersParams{{Logins: []string{route}}}
+	if _, err := strconv.ParseUint(route, 10, 64); err == nil {
+		params = []*helix.UsersParams{{IDs: []string{route}}, {Logins: []string{route}}}
+	}
+	var lastErr error
+	for _, p := range params {
+		resp, err := TwitchClient.GetUsers(p)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(resp.Data.Users) > 0 {
+			return &resp.Data.Users[0], nil
+		}
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("got empty users from Twitch for %q", route)
 }
 
 // Retrieves the last song
@@ -225,6 +250,11 @@ func callbacksHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, route := range whereToSendCallback {
+		route = strings.TrimSpace(route)
+		if route == "" {
+			// No route for this radio_id
+			continue
+		}
 		if strings.Contains(route, "youtube:") {
 			route = strings.ReplaceAll(route, "youtube:", "")
 			// needs additional code to send results to YouTube chats, let us know if you need this
@@ -267,12 +297,22 @@ type KnownChannel struct {
 	jwt         string
 }
 
-// Sends new result to Twitch live chat and to the connected extensions
-func (ch *KnownChannel) NewResult(v *audd.RecognitionResult, timestamp string) {
+// addResult stores a new result in the history and returns the chat text.
+// The caller must hold knownChannelsMu for writing.
+func (ch *KnownChannel) addResult(v *audd.RecognitionResult, timestamp string) string {
 	text := v.SongLength // Text for the chat
 	v.SongLength = timestamp
 	ch.History.AddElement(v)
-	capture(LongPollManager.Publish(ch.NumericalId, v))
+	return text
+}
+
+// publish sends a new result to longpoll clients, to the connected extensions
+// and to the Twitch live chat. It must be called without holding
+// knownChannelsMu: it waits on Twitch.
+func (ch *KnownChannel) publish(v *audd.RecognitionResult, text string) {
+	if LongPollManager != nil {
+		capture(LongPollManager.Publish(ch.NumericalId, v))
+	}
 	resultEncoded, err := json.Marshal(v)
 	if capture(err) {
 		return
@@ -376,13 +416,17 @@ func getChannelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	knownChannelsMu.RLock()
 	result, isSet := knownChannels[chId]
+	var b []byte
+	if isSet {
+		// Marshal under the lock: the history changes when songs arrive
+		b, err = json.Marshal(result)
+	}
 	knownChannelsMu.RUnlock()
 	if !isSet {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`"not_found"`))
 		return
 	}
-	b, err := json.Marshal(result)
 	if capture(err) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -407,13 +451,18 @@ func getChannelByStringHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	knownChannelsMu.RLock()
 	result, isSet := knownChannels[chIntId]
+	var b []byte
+	var err error
+	if isSet {
+		// Marshal under the lock: the history changes when songs arrive
+		b, err = json.Marshal(result)
+	}
 	knownChannelsMu.RUnlock()
 	if !isSet {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`"not_found"`))
 		return
 	}
-	b, err := json.Marshal(result)
 	if capture(err) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
