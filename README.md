@@ -1,55 +1,125 @@
 # AudD Music Recognition Twitch extension
 
-The repository contains the source code for the [AudD Music Recognition Twitch extension](https://dashboard.twitch.tv/extensions/ikcbah7wbue48v7doo4edulmxblt64-0.0.4).
+The source code of the [AudD Music Recognition Twitch extension](https://dashboard.twitch.tv/extensions/ikcbah7wbue48v7doo4edulmxblt64). It shows viewers the song playing on a stream, with a link to open it on their music service, and posts each song in chat. The songs are recognized by the [AudD Music Recognition API](https://audd.io/) from the stream's audio.
 
-The extension is based on [Music Recognition API](https://audd.io/).
+## What's in the extension
 
-AudD allows you to recognize music both in audio files (from TikTok UGC to microphone recordings) and live audio streams. With AudD, you can analyze what music is popular on social media or on radio stations you connect, build nice Now Playing things, make your own shazam app, or a screen connected to your vinyl player that shows the cover of the playing song.
+- **Panel** (`frontend/panel.html`), below the video and in the Twitch mobile app: the song playing now, with cover art and a link to the song page, and the songs played before it. Follows Twitch's light and dark themes.
+- **Video component** (`frontend/video_component.html`), over the video: the song playing now, in the dark overlay style of Twitch's player controls. A song that played a while ago shrinks to one line.
+- **Configuration page** (`frontend/config.html`), in the Creator Dashboard: the streamer connects an AudD account (Sign in with AudD, a new account, or a pasted API token), turns on recognition for the stream, and gets the address of the OBS widget. A preview shows the panel with the channel's real songs.
+- **Hosted widget** (the same `panel.html` at [widget.audd.tech](https://widget.audd.tech/)), for OBS browser sources.
 
-## Frontend
+The label above the latest song only says what the timestamps support: *Now playing* for up to 6 minutes after a song started, *Just played* for a song AudD reported after it ended, and *Played 25 min ago* after that. Times are shown in the viewer's time zone.
 
-Frontend is written in JS. There are two versions of widget layouts: with history & colorful background (for the panel below the video) and without history & with no background (for being placed on top of the video).
+Everything is plain JavaScript with no libraries: `js/endpoints.js` (every address the extension uses), `js/audd.js` (shared code: parsing, history, views), `js/viewer.js` (panel, component, widget) and `js/config.js` (configuration page).
 
-When the frontend is being opened, it connects to the backend to get the history of the songs (including the last played song). After that, it connects to the Twitch PubSub system to get new songs.
+### How songs reach the page
 
-If the frontend can't connect to Twitch pubsub but opened with `?ch=[twitch username]` in the URL, it connects directly to the backend and uses longpoll to get new songs.
+When a view opens, it loads the channel's last 40 songs from the backend (`getChannelById`). New songs then arrive through Twitch Extension PubSub, which the backend broadcasts to. The hosted widget, which runs outside Twitch, gets new songs from the backend's longpoll instead.
+
+## Hosted widget
+
+`https://widget.audd.tech/?ch=<channel>` shows the current song with a transparent background, for an OBS browser source. `<channel>` is either the numeric Twitch channel ID (the configuration page builds this address for the streamer) or `-` followed by an AudD stream's longpoll category, for streams that aren't on Twitch.
+
+Add any of these to the address:
+
+| Parameter | Effect |
+|---|---|
+| `&history` | List the songs played before the current one |
+| `&background` | Draw a card behind the songs |
+| `&shadow` | Add a shadow under the cover art |
+| `&black-font` | Dark text, for light scenes |
+
+The widget fits any source size; for example 600 × 160, or 600 × 420 with `&history`. To host it, serve the `frontend` folder with `panel.html` as the index page.
+
+## Sign in with AudD
+
+The configuration page links a channel to an AudD account without the streamer copying an API token:
+
+1. The page starts an OAuth 2.0 device authorization ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)) at AudD's authorization server, `https://dashboard-api.audd.io`, with the public client `audd-twitch` and the scope `token:read`, for the resource `https://mcp.audd.io`.
+2. The streamer opens the AudD sign-in page in a new tab, checks the code, and approves. The page polls the token endpoint meanwhile.
+3. The page sends the access token and its Twitch extension JWT to the backend's `/lastSong/auddApiToken/`. The backend accepts only a broadcaster JWT, reads the account's API token with the `get_api_token` tool of the AudD MCP server (which doesn't answer browsers on the extension's origin), and returns it.
+4. The page links the account with `dashboard.audd.io/api/twitch.php?save_user`, the same request it makes for a pasted token, then revokes the OAuth tokens.
+
+If the client or the backend endpoint isn't available, the page offers to paste an API token instead.
+
+## Run it locally
+
+`dev/preview` serves the extension with a stand-in for Twitch's extension helper and mocks of everything it talks to: the backend, `twitch.php`, the OAuth device flow and the MCP server. It needs only Go.
+
+```sh
+cd dev
+go run ./preview
+```
+
+Then open http://127.0.0.1:8787/ for a gallery of every view in every state, light and dark. Each tile links to the page on its own; the parameters in its address select the state:
+
+| Parameter | Values |
+|---|---|
+| `theme` | `dark`, `light` (what Twitch's `onContext` reports) |
+| `channel` | the songs the mock backend has: `typical`, `just`, `stale`, `one`, `full`, `long`, `nocover`, `youtube`, `legacy`, `empty`, `empty-prod`, `slow`, `down`, `flaky` |
+| `every` | push a new song through PubSub every N seconds |
+| `role` | `viewer`, `broadcaster` |
+| `account` | what `twitch.php` reports: `none`, `active`, `expiring`, `expired`, `unpaid`, `error-<code>`, `down`, `slow` |
+| `signin` | make Sign in with AudD fail: `unregistered` (unknown client), `nobackend` (backend without the endpoint), `nomcp` (MCP server unreachable) |
+| `platform` | `mobile` for the Twitch mobile app |
+
+On the configuration page, *Sign in with AudD* opens a local approval page; the mock accepts the API tokens `good-token`, `expired-token` and `unpaid-token`. The preview serves pages with a content security policy like Twitch's, so inline scripts or requests to other hosts fail the same way they would on Twitch.
+
+`dev/screenshots.mjs` takes a screenshot of every state and reports any request outside the preview server, CSP violation or script error. It needs [playwright-core](https://www.npmjs.com/package/playwright-core) and a Chromium:
+
+```sh
+go run ./preview -before /path/to/an/older/frontend &   # -before is optional: serves it at /before/
+node screenshots.mjs ./screenshots
+```
 
 ## Backend
 
-Backend is written in Golang. It receives the callbacks from AudD API, understands what is the twitch channel for the received callback, and sends the result to the Twitch PubSub, to the chat, and to connected clients.
+The backend (`backend/`, Go) receives the AudD stream callbacks, keeps the last 40 songs of each channel, and sends each new song to Twitch Extension PubSub, to the channel's chat, and to longpoll clients. It serves:
 
-Note that originally the service was designed to sent results not only to Twitch but also to YouTube, Discord, etc. Let us know if you want the code for sending the results to YouTube and Discord.
+| Path | What |
+|---|---|
+| `/lastSong/callbacks/?secret=...&routes=...` | AudD stream callbacks |
+| `/lastSong/getChannelById/?ch_id=<channel ID>` | A channel's songs: `{"NumericalId", "StringId", "History": {"OldestElement", "Elements": [...]}}` |
+| `/lastSong/getChannel/?ch_id=<login>` | The same, by Twitch login |
+| `/lastSong/longpoll/?category=<channel ID>&timeout=30&since_time=<ms>` | New songs, for clients outside Twitch |
+| `/lastSong/auddApiToken/` | The Sign in with AudD step above (POST `jwt`, `access_token`) |
 
-### More info on the backend
+Each song is an AudD recognition result (`artist`, `title`, `album`, `release_date`, `label`, `song_link`, `score`) plus `played_at` (the AudD callback timestamp, Unix seconds) and `play_length` (seconds, when AudD sends it). `song_length` holds the same timestamp as text, as extension versions before 0.1.0 expect.
 
-AudD sends callbacks with results for all the streams to a single callback URL we set, so if we want to process the callbacks differently for different streams (e.g. send results to different Twitch extensions depending on what is the radio_id in the callbacks), we need to store the information which radio_ids corresponds to which Twitch channels
-somewhere.
+### Routes: which stream goes to which channel
 
-Surely, you can just have a DB or KV-store or whatever instead of doing everything this way, but here we use the callback URL stored on the AudD's side to store the radio_ids and corresponding channels. It's done by simply having a URL parameter "routes" in the callback URL which contains a JSON map with radio_ids and routes.
-
-So if this service is available on `http://this-service.com/lastSong/`, and we want to store the information that the stream with radio_id=1 belongs to Twitch user username1 and stream #2 to username2, we simply use something like `http://this-service.com/lastSong/callbacks/?secret=[callbacksSecret]&routes={"1":"username1","2":"username2"}` as the callback URL that we send to AudD. So when AudD sends callbacks to this URL, this service gets the routes variable.
-
-Then we use this routes variable we stored on AudD's side to understand that we need to send the result to username1 if we got a callback for stream #1 and to username2 if we got a callback for stream #2.
-
-And we can also update this variable at any time by sending a new URL to the AudD API using the [setCallbackUrl](https://docs.audd.io/streams#2-set-the-url-for-callbacks) method.
-
-We have an addition to this service that brings support of Discord and YouTube bots to send results to Discord and YouTube chats, let us know if you need this addition, we'll publish it then.
-
-By the way, routes support comma-separated values, e.g. you can send the results from a stream to `"username1,username3,youtube:[video id]"` instead of just `"username1"`.
-
-### Using with nginx
-
-By default, the service listens on 127.0.0.1:8334. You can change this in the startServer function. Can be used with the following nginx configuration:
+AudD sends the callbacks of every stream to one callback URL, so the backend needs to know which Twitch channel each stream (`radio_id`) belongs to. Instead of a database, it keeps that map in the callback URL itself, in a `routes` parameter:
 
 ```
-	location /lastSong/ {
-		proxy_request_buffering off;
-		proxy_pass http://127.0.0.1:8334;
-	}
+https://this-service.example/lastSong/callbacks/?secret=<callbacksSecret>&routes={"1":"username1","2":"username2"}
 ```
 
-  To pass the client's IP to the service, add something like `proxy_set_header X-Real-IP $remote_addr;` inside the location{}
+Set it with the AudD [setCallbackUrl](https://docs.audd.io/streams#-2-set-the-url-for-callbacks) method, and update it the same way. A route is a Twitch login; to name a channel by its numeric Twitch ID, write `id:<ID>`, for example `{"1":"id:57165160"}`. Separate several routes for one stream with commas: `"username1,username3"`.
 
-### Building backend for Windows
+`callbacksSecret` must be set: the backend refuses every callback while it's empty.
 
-The package uses the [CloudFlare's tableflip](https://github.com/cloudflare/tableflip) to gradually upgrade when get SIGHUP without losing any requests. It doesn't support Windows and the build for Windows will fail. If you want to run this service on Windows, remove the tableflip stuff in the startServer function.
+### Build and run
+
+```sh
+cd backend
+go build      # Go 1.21 or later
+go test ./...
+```
+
+Fill in the constants at the top of `main.go` (callback secret, extension client ID and secrets, Twitch OAuth tokens, optional Telegram and Sentry settings). The service listens on `127.0.0.1:8334`; with nginx:
+
+```
+location /lastSong/ {
+    proxy_request_buffering off;
+    proxy_pass http://127.0.0.1:8334;
+}
+```
+
+To pass the client's IP to the service, add `proxy_set_header X-Real-IP $remote_addr;` inside the `location`.
+
+The service uses [Cloudflare's tableflip](https://github.com/cloudflare/tableflip) to restart on SIGHUP without dropping requests. tableflip doesn't support Windows, so the build fails there; to run the service on Windows, remove the tableflip code from `startServer`.
+
+## Twitch console settings
+
+The extension fetches from `api.audd.io`, `dashboard.audd.io` and `dashboard-api.audd.io`, and loads images from `lis.tn` and `i3.ytimg.com`. Allowlist them under *Allowlist for URL Fetching Domains* and *Allowlist for Image Domains*. Upload the contents of `frontend/` except `AudD music recognition.json`, which is a Twitch Developer Rig project file.
