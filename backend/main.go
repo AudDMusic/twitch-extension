@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/AudDMusic/audd-go"
+	"github.com/AudDMusic/twitch-extension/backend/signin"
 	tg "github.com/Syfaro/telegram-bot-api"
 	"github.com/cloudflare/tableflip"
 	"github.com/getsentry/raven-go"
@@ -88,7 +89,7 @@ const callbacksSecret = ""
 // !   Please note that at some point in the future when you'll make updates, some of your users will still have
 // !   the previous version installed, which means that you'll need to get the version of the extension installed
 // !   on a Twitch channel from the frontend, which is currently not implemented
-const extensionVersion = "0.0.1"
+const extensionVersion = "0.1.0"
 const extensionOwnerUserId = "57165160" // ID of the user who created/owns the extension
 const extensionClientId = "ikcbah7wbue48v7doo4edulmxblt64"
 const extensionClientSecret = ""
@@ -620,6 +621,13 @@ func startServer() {
 	if LongPollManager != nil {
 		mux.HandleFunc("/lastSong/longpoll/", addCorsHeaders(LongPollManager.SubscriptionHandler))
 	}
+	// Used by the configuration page after "Sign in with AudD": reads the
+	// streamer's API token from the AudD MCP server (see package signin)
+	mux.HandleFunc("/lastSong/auddApiToken/", raven.RecoveryHandler(signin.Handler(signin.Config{
+		ExtensionSecret: extensionSecret,
+		MCPURL:          signin.DefaultMCPURL,
+		ClientVersion:   extensionVersion,
+	})))
 
 	port := ":8334"
 	description := "Last song microservice"
