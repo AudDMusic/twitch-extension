@@ -1,0 +1,510 @@
+/* Configuration page, inside Twitch's Creator Dashboard. */
+
+html,
+body {
+  height: auto;
+  min-height: 100%;
+}
+
+.config {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 24px 32px;
+}
+
+.config__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.config__logo {
+  flex: none;
+  width: 67px;
+  height: 18px;
+  margin-top: 6px;
+  filter: var(--logo-filter);
+}
+
+.config__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 28px;
+}
+
+.config__lead {
+  margin: 4px 0 0;
+  max-width: 560px;
+  color: var(--text-2);
+}
+
+.config__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .config {
+    padding: 16px;
+  }
+
+  .config__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Steps */
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  column-gap: 14px;
+  padding-bottom: 22px;
+  counter-increment: step;
+}
+
+/* The line joining the step markers */
+.step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 32px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--line);
+}
+
+.step__marker {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.step__marker::before {
+  content: counter(step);
+}
+
+.step[data-state="current"] .step__marker {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.step[data-state="done"] .step__marker {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: var(--bg);
+}
+
+.step[data-state="done"] .step__marker::before {
+  content: "";
+  width: 12px;
+  height: 7px;
+  margin-top: -3px;
+  border-left: 2.5px solid currentColor;
+  border-bottom: 2.5px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.step[data-state="attention"] .step__marker {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+  color: var(--text);
+}
+
+.step__title {
+  margin: 3px 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+.step[data-state="todo"] .step__title {
+  color: var(--text-2);
+}
+
+.step__content > p {
+  margin: 0 0 10px;
+  color: var(--text-2);
+}
+
+.step__content > p:last-child {
+  margin-bottom: 0;
+}
+
+.step__content strong {
+  color: var(--text);
+}
+
+.step[data-state="todo"] .step__content {
+  color: var(--text-3);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 4px;
+}
+
+.alt-paths {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-2);
+}
+
+.button--signin {
+  min-height: 40px;
+  padding: 0 18px;
+  font-size: 15px;
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-2);
+}
+
+.status-line--inline {
+  display: inline-flex;
+}
+
+.ok-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ok-line .icon {
+  color: var(--ok);
+  font-size: 18px;
+}
+
+.alert {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  background: var(--error-bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.alert .icon {
+  flex: none;
+  margin-top: 1px;
+  font-size: 16px;
+  color: var(--error);
+}
+
+.alert p {
+  margin: 0;
+}
+
+.notice {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--warn-line);
+  border-radius: 6px;
+  background: var(--warn-bg);
+  font-size: 13px;
+}
+
+.notice p {
+  margin: 0;
+}
+
+/* Sign in with AudD (device flow) */
+.signin {
+  margin-top: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--bg-raised);
+}
+
+.signin__steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-2);
+}
+
+.signin__steps > li {
+  padding-left: 4px;
+  margin-bottom: 12px;
+}
+
+.signin__steps > li::marker {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.signin__steps .button {
+  margin-top: 8px;
+}
+
+.code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.code__value {
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  user-select: all;
+}
+
+.signin__wait {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* Paste an API token */
+.token-form {
+  display: grid;
+  gap: 6px;
+  max-width: 460px;
+  margin-top: 4px;
+}
+
+.token-form label {
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+}
+
+.input:focus-visible {
+  outline-offset: 0;
+  border-color: var(--focus);
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.field-error {
+  margin: 0;
+  color: var(--error);
+  font-size: 13px;
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.hint a,
+.help a,
+.step__content a:not(.button) {
+  color: var(--text);
+  text-underline-offset: 2px;
+}
+
+.places {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.places li {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-2);
+}
+
+.places strong {
+  display: block;
+  color: var(--text);
+}
+
+/* OBS widget */
+.obs {
+  margin: 6px 0 0 42px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.obs[hidden] {
+  display: none;
+}
+
+.obs__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.obs__optional {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-press);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.obs__text {
+  margin: 0 0 10px;
+  color: var(--text-2);
+}
+
+.copy-field {
+  display: flex;
+  gap: 8px;
+}
+
+.copy-field__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 10px 0 8px;
+  padding: 0;
+  border: 0;
+}
+
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.option input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--brand);
+}
+
+.help {
+  margin: 22px 0 0 42px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .obs,
+  .help {
+    margin-left: 0;
+  }
+}
+
+/* Preview of the panel */
+.config__preview {
+  position: sticky;
+  top: 16px;
+}
+
+.preview__heading {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.preview {
+  position: relative;
+  width: 318px;
+  height: 300px;
+  overflow: hidden;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--line-strong), 0 6px 24px rgba(0, 0, 0, 0.25);
+  background: var(--bg);
+}
+
+.preview .view--panel {
+  height: 300px;
+}
+
+.preview__caption {
+  max-width: 318px;
+  margin: 8px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .config__preview {
+    position: static;
+  }
+}
