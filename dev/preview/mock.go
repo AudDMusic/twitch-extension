@@ -344,6 +344,11 @@ func (h *harness) longpoll(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
 		return
 	}
+	if name == "errorbody" {
+		// golongpoll answers its own errors with 200
+		writeJSON(w, http.StatusOK, map[string]string{"error": "Invalid or missing 'timeout' arg"})
+		return
+	}
 	timeout, _ := strconv.Atoi(r.FormValue("timeout"))
 	if timeout <= 0 || timeout > 120 {
 		timeout = 30
