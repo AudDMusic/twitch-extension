@@ -124,3 +124,52 @@ func TestCallbackSecretRefusedWhenEmpty(t *testing.T) {
 		t.Error("constant-time comparison is wrong")
 	}
 }
+
+func TestFlexIntReadsAnyNumberForm(t *testing.T) {
+	var cb SuccessResult
+	for body, want := range map[string]int{
+		`{"result":{"play_length":111}}`:   111,
+		`{"result":{"play_length":111.0}}`: 111,
+		`{"result":{"play_length":"95"}}`:  95,
+		`{"result":{"play_length":null}}`:  0,
+		`{"result":{"play_length":"x"}}`:   0,
+		`{"result":{}}`:                    0,
+	} {
+		cb = SuccessResult{}
+		if err := json.Unmarshal([]byte(body), &cb); err != nil {
+			t.Fatalf("%s: %v", body, err)
+		}
+		if int(cb.Result.PlayLength) != want {
+			t.Errorf("%s: play_length %d, want %d", body, cb.Result.PlayLength, want)
+		}
+	}
+}
+
+func TestStringID(t *testing.T) {
+	if got := stringID("id:57165160", "mishasamin"); got != "mishasamin" {
+		t.Errorf("id: route: %q", got)
+	}
+	if got := stringID("monstercat", "monstercat"); got != "monstercat" {
+		t.Errorf("login route: %q", got)
+	}
+}
+
+func TestPubSubMessageLeavesOutExtraMetadata(t *testing.T) {
+	item := newHistoryItem(audd.RecognitionResult{
+		Artist: "A", Title: "T", SongLink: "https://lis.tn/x",
+		AppleMusic: &audd.AppleMusicResult{}, Spotify: &audd.SpotifyResult{},
+	}, "2026-11-21 20:15:07", 0)
+	b, _ := json.Marshal(pubsubSongOf(item))
+	var got map[string]interface{}
+	_ = json.Unmarshal(b, &got)
+	for _, k := range []string{"apple_music", "spotify"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("PubSub message has %s: %s", k, b)
+		}
+	}
+	for _, k := range []string{"artist", "title", "song_link", "song_length", "played_at"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("PubSub message lacks %s: %s", k, b)
+		}
+	}
+}

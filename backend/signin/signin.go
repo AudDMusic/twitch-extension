@@ -243,9 +243,11 @@ func tokenFrom(m map[string]interface{}) string {
 	return strings.TrimSpace(s)
 }
 
+// classifyToolError tells a missing token:read grant (the tool isn't listed
+// for this sign-in, or the error names the scope) from other failures.
 func classifyToolError(msg string) string {
 	l := strings.ToLower(msg)
-	for _, w := range []string{"unknown tool", "not found", "not allowed", "scope", "permission", "forbidden"} {
+	for _, w := range []string{"unknown tool", "tool not found", "not allowed", "scope", "token:read"} {
 		if strings.Contains(l, w) {
 			return ErrPermissionMissing
 		}

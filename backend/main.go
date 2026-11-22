@@ -107,7 +107,6 @@ const telegramLogsChatId int64 = 0
 // If you don't use Sentry, remove everything that starts with raven
 const sentryDsn = ""
 
-
 var mu = sync.RWMutex{}
 
 var lastSong = map[string]audd.RecognitionResult{}
@@ -149,7 +148,7 @@ func processResult(result audd.RecognitionResult, chId, timestamp string, playLe
 		if _, exists := knownChannels[chIntId]; !exists {
 			knownChannels[chIntId] = &KnownChannel{
 				NumericalId: chIntId,
-				StringId:    chId,
+				StringId:    stringID(chId, user.Login),
 				History:     NewRotatedQueue(historyCap),
 				jwt:         tokenString,
 			}
@@ -179,6 +178,34 @@ func routeUsersParams(route string) (*helix.UsersParams, error) {
 		return &helix.UsersParams{IDs: []string{id}}, nil
 	}
 	return &helix.UsersParams{Logins: []string{route}}, nil
+}
+
+// stringID is the StringId of a channel: the route, or for an id: route the
+// channel's login.
+func stringID(route, login string) string {
+	if strings.HasPrefix(route, twitchIDRoutePrefix) && login != "" {
+		return login
+	}
+	return route
+}
+
+// flexInt reads a JSON number that may also come as a string or with a
+// fraction, so an unexpected play_length format doesn't drop the callback.
+type flexInt int
+
+func (f *flexInt) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(strings.TrimSpace(string(b)), `"`)
+	if s == "" || s == "null" {
+		*f = 0
+		return nil
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		*f = 0
+		return nil
+	}
+	*f = flexInt(v)
+	return nil
 }
 
 // lookUpTwitchUser finds the Twitch user a route names.
@@ -220,12 +247,12 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 // Callbacks structure
 type SuccessResult struct {
 	Status string `json:"status"`
-	Result Songs `json:"result"`
+	Result Songs  `json:"result"`
 }
 type Songs struct {
-	RadioID    int    `json:"radio_id"`
-	Timestamp  string `json:"timestamp"`
-	PlayLength int `json:"play_length,omitempty"`
+	RadioID    int                      `json:"radio_id"`
+	Timestamp  string                   `json:"timestamp"`
+	PlayLength flexInt                  `json:"play_length,omitempty"`
 	Results    []audd.RecognitionResult `json:"results"`
 }
 
@@ -242,13 +269,13 @@ func callbackSecretMatches(got string) bool {
 // Handles the callbacks
 func callbacksHandler(w http.ResponseWriter, r *http.Request) {
 	raven.SetHttpContext(raven.NewHttp(r))
-	b, err := ioutil.ReadAll(r.Body)
 	defer captureFunc(r.Body.Close)
-	if capture(err) {
-		return
-	}
 	if !callbackSecretMatches(r.URL.Query().Get("secret")) {
 		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	b, err := ioutil.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if capture(err) {
 		return
 	}
 	var callback SuccessResult
@@ -291,7 +318,7 @@ func callbacksHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// by default, send the results to the Twitch channel specified in the route
-		processResult(callback.Result.Results[0], route, callback.Result.Timestamp, callback.Result.PlayLength)
+		processResult(callback.Result.Results[0], route, callback.Result.Timestamp, int(callback.Result.PlayLength))
 		continue
 	}
 }
@@ -309,6 +336,29 @@ type HistoryItem struct {
 	// callbacks come after a song ends (the default); with callbacks=before it
 	// is absent.
 	PlayLength int `json:"play_length,omitempty"`
+}
+
+// pubsubSong is the part of a song sent through Twitch PubSub.
+type pubsubSong struct {
+	Artist      string `json:"artist,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Album       string `json:"album,omitempty"`
+	ReleaseDate string `json:"release_date,omitempty"`
+	Label       string `json:"label,omitempty"`
+	Timecode    string `json:"timecode,omitempty"`
+	SongLink    string `json:"song_link,omitempty"`
+	Score       int    `json:"score,omitempty"`
+	SongLength  string `json:"song_length,omitempty"`
+	PlayedAt    int64  `json:"played_at,omitempty"`
+	PlayLength  int    `json:"play_length,omitempty"`
+}
+
+func pubsubSongOf(v *HistoryItem) pubsubSong {
+	return pubsubSong{
+		Artist: v.Artist, Title: v.Title, Album: v.Album, ReleaseDate: v.ReleaseDate, Label: v.Label,
+		Timecode: v.Timecode, SongLink: v.SongLink, Score: v.Score, SongLength: v.SongLength,
+		PlayedAt: v.PlayedAt, PlayLength: v.PlayLength,
+	}
 }
 
 // The format and time zone of the "timestamp" field of AudD stream callbacks.
@@ -366,7 +416,10 @@ func (ch *KnownChannel) publish(v *HistoryItem, text string) {
 	if LongPollManager != nil {
 		capture(LongPollManager.Publish(ch.NumericalId, v))
 	}
-	resultEncoded, err := json.Marshal(v)
+	// Twitch PubSub takes messages up to 5 KB, so it gets the fields the
+	// extension shows rather than the whole result (which can carry Apple
+	// Music, Spotify and other metadata).
+	resultEncoded, err := json.Marshal(pubsubSongOf(v))
 	if capture(err) {
 		return
 	}
@@ -522,7 +575,6 @@ func getChannelByStringHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write(b)
 }
-
 
 // Returns a text for sending to a chat
 func getResultText(result audd.RecognitionResult, includePlaysOn, includeReleased, includeAlbum, includePublisher, includeLink bool) string {
