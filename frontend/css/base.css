@@ -19,8 +19,6 @@
   --on-brand: #ffffff;
   --focus: #bf94ff;
   --ok: #5fd09b;
-  --warn-bg: rgba(255, 196, 80, 0.12);
-  --warn-line: rgba(255, 196, 80, 0.45);
   --error: #ff8a8a;
   --error-bg: rgba(255, 90, 90, 0.12);
   --skeleton: rgba(255, 255, 255, 0.1);
@@ -45,8 +43,6 @@
   --on-brand: #ffffff;
   --focus: #772ce8;
   --ok: #00794a;
-  --warn-bg: rgba(255, 170, 0, 0.14);
-  --warn-line: rgba(190, 120, 0, 0.5);
   --error: #b3001b;
   --error-bg: rgba(200, 0, 30, 0.08);
   --skeleton: rgba(0, 0, 0, 0.08);

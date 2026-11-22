@@ -554,14 +554,14 @@ li.is-new .row {
   }
 }
 
-/* Broadcaster-only note */
+/* Broadcaster-only note: same surface as the panel, no colour of its own */
 .note {
   flex: none;
-  padding: 9px 14px 10px;
-  border-bottom: 1px solid var(--warn-line);
-  background: var(--warn-bg);
-  font-size: 12px;
-  line-height: 16px;
+  padding: 10px 14px 11px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .note[hidden] {
@@ -576,20 +576,24 @@ li.is-new .row {
   display: flex;
   align-items: center;
   gap: 5px;
-  margin-bottom: 2px !important;
-  font-weight: 700;
+  margin-bottom: 3px !important;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
 }
 
 .note__text {
-  color: var(--text-2);
+  color: var(--text);
 }
 
 .note__action {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
-  font-weight: 700;
+  margin-top: 3px;
+  color: var(--text);
+  font-weight: 600;
   text-underline-offset: 2px;
 }
 
