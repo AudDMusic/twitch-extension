@@ -9,7 +9,7 @@ The source code of the [AudD Music Recognition Twitch extension](https://dashboa
 - **Configuration page** (`frontend/config.html`), in the Creator Dashboard: the streamer connects an AudD account (Sign in with AudD, a new account, or a pasted API token), turns on recognition for the stream, and gets the address of the OBS widget. A preview shows the panel with the channel's real songs.
 - **Hosted widget** (the same `panel.html` at [widget.audd.tech](https://widget.audd.tech/)), for OBS browser sources.
 
-The label above the latest song only says what the timestamps support: *Now playing* for up to 6 minutes after a song started, *Just played* for a song AudD reported after it ended, and *Played 25 min ago* after that. Times are shown in the viewer's time zone.
+The label above the latest song only says what the timestamps support: *Now playing* for up to 6 minutes after a song started, *Just played* for a song AudD reported after it ended, and *Played 25 min ago* after that. A backend that doesn't send `played_at` can't say which of the two a song was, so its recent songs are the *Latest song*. Times are shown in the viewer's time zone.
 
 Everything is plain JavaScript with no libraries: `js/endpoints.js` (every address the extension uses), `js/audd.js` (shared code: parsing, history, views), `js/viewer.js` (panel, component, widget) and `js/config.js` (configuration page).
 
@@ -85,7 +85,7 @@ The backend (`backend/`, Go) receives the AudD stream callbacks, keeps the last 
 | `/lastSong/longpoll/?category=<channel ID>&timeout=30&since_time=<ms>` | New songs, for clients outside Twitch |
 | `/lastSong/auddApiToken/` | The Sign in with AudD step above (POST `jwt`, `access_token`) |
 
-Each song is an AudD recognition result (`artist`, `title`, `album`, `release_date`, `label`, `song_link`, `score`) plus `played_at` (the AudD callback timestamp, Unix seconds) and `play_length` (seconds, when AudD sends it). `song_length` holds the same timestamp as text, as extension versions before 0.1.0 expect.
+Each song is an AudD recognition result (`artist`, `title`, `album`, `release_date`, `label`, `song_link`, `score`) plus `played_at` (the AudD callback timestamp, Unix seconds) and `play_length` (seconds, when AudD sends it). `song_length` holds the same timestamp as text, as extension versions before 0.1.0 expect. PubSub messages carry only these fields, to stay under Twitch's 5 KB limit; the history and longpoll have the whole result.
 
 ### Routes: which stream goes to which channel
 
