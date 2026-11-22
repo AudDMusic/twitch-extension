@@ -114,7 +114,7 @@ a.now:focus-visible {
 }
 
 /* Narrow (zoomed in, or a long label): the Listen pill keeps only its icon */
-@container (max-width: 210px) {
+@container (max-width: 150px) {
   .listen__label {
     display: none;
   }

@@ -89,6 +89,7 @@
       s.link = null;
       s.album = '';
       s.playLength = 0;
+      s.knowsMode = true;
       s.key = 'example-' + i;
       return s;
     });
