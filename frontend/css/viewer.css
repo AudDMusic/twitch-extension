@@ -456,10 +456,6 @@ li.is-new .row {
   font-size: 20px;
 }
 
-.message--error .message__icon {
-  color: var(--error);
-}
-
 .message__title {
   margin: 0 0 4px;
   text-wrap: balance;

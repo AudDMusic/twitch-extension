@@ -108,7 +108,7 @@ body {
 }
 
 .step[data-state="done"] .step__marker {
-  border-color: var(--ok);
+  border-color: transparent;
   background: var(--ok);
   color: var(--bg);
 }
@@ -210,9 +210,9 @@ body {
   gap: 10px;
   margin: 12px 0 0;
   padding: 10px 12px;
-  border: 1px solid var(--error);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
-  background: var(--error-bg);
+  background: var(--bg-raised);
   color: var(--text);
   font-size: 13px;
 }
@@ -221,7 +221,7 @@ body {
   flex: none;
   margin-top: 1px;
   font-size: 16px;
-  color: var(--error);
+  color: var(--text);
 }
 
 .alert p {
@@ -343,12 +343,13 @@ body {
 }
 
 .input[aria-invalid="true"] {
-  border-color: var(--error);
+  border-color: var(--text);
 }
 
 .field-error {
   margin: 0;
-  color: var(--error);
+  color: var(--text);
+  font-weight: 600;
   font-size: 13px;
 }
 
