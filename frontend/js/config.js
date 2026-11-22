@@ -26,6 +26,7 @@
     rate_limited: 'Too many sign-in attempts from your network. Wait a few minutes, then try again.',
     access_denied: 'The sign-in was declined on the AudD page. Start again when you’re ready.',
     expired_token: 'The code expired before it was approved. Start again to get a new code.',
+    invalid_grant: 'That sign-in code is no longer valid. Start again to get a new code.',
     token_permission_missing: 'AudD didn’t share your API token because that permission was unticked. Sign in again and leave it ticked.',
     sign_in_expired: 'The AudD sign-in expired before your account was linked. Sign in again.',
     account_service_unavailable: 'AudD’s account service didn’t respond. Try again in a minute, or paste your API token instead.'
@@ -60,8 +61,16 @@
     widgetUrl: document.getElementById('widget-url'),
     widgetCopy: document.getElementById('widget-copy'),
     preview: document.getElementById('preview'),
-    previewCaption: document.getElementById('preview-caption')
+    previewCaption: document.getElementById('preview-caption'),
+    announcer: document.getElementById('announce')
   };
+
+  // One polite live region for the changes that matter; the steps
+  // themselves are redrawn and would be read again in full.
+  function announce(text) {
+    nodes.announcer.textContent = '';
+    setTimeout(function () { nodes.announcer.textContent = text; }, 50);
+  }
 
   AudD.setTheme('dark');
 
@@ -85,7 +94,7 @@
     });
   })();
 
-  var preview = AudD.createView(nodes.preview, 'panel', { example: true });
+  var preview = AudD.createView(nodes.preview, 'panel', { example: true, announce: false, headingLevel: 3 });
   preview.update({ phase: 'ready', songs: EXAMPLE_SONGS });
   var previewFeed = null;
 
@@ -135,7 +144,7 @@
       box.appendChild(el('p', { class: 'ok-line' }, [icon('check'), 'Your AudD account is connected to this channel.']));
       box.appendChild(el('p', {}, [el('button', {
         class: 'link-button', type: 'button',
-        on: { click: function () { model.account = 'none'; model.switching = true; model.connect = 'choose'; model.error = null; render(); } }
+        on: { click: function () { stopAwaitingPayment(); model.account = 'none'; model.switching = true; model.connect = 'choose'; model.error = null; render(); } }
       }, 'Connect a different AudD account')]));
       return;
     }
@@ -233,7 +242,7 @@
       el('li', {}, [
         s.uriComplete ? 'Check that the page shows this code, then approve:' : 'Enter this code there, then approve:',
         el('div', { class: 'code' }, [
-          el('span', { class: 'code__value', 'aria-label': 'Code: ' + s.userCode.split('').join(' '), text: s.userCode }),
+          el('span', { class: 'code__value' }, [el('span', { class: 'visually-hidden', text: 'Code: ' }), s.userCode]),
           copyButton(function () { return s.userCode; }, 'Copy code')
         ])
       ])
@@ -419,7 +428,7 @@
       if (where === 'load') model.account = 'error';
       return;
     }
-    var wasActive = model.recognition === 'active';
+    if (model.account !== 'connected' && where !== 'load') announce('Your AudD account is connected to this channel.');
     model.account = 'connected';
     model.switching = false;
     model.recognition = s.state;
@@ -427,14 +436,22 @@
     model.connect = 'choose';
     model.tokenDraft = '';
     model.error = null;
-    if (s.state === 'active' && model.awaitingPayment && !wasActive) {
+    // Paid: recognition turned on, or its end date moved (a renewal).
+    var from = model.paymentFrom || {};
+    if (model.awaitingPayment && s.state === 'active' && (from.state !== 'active' || (s.account.tillText && s.account.tillText !== from.till))) {
       model.justPaid = true;
-      model.awaitingPayment = false;
+      stopAwaitingPayment();
+      announce('Payment received. Music recognition is on.');
     }
     showLivePreview();
   }
 
   function loadAccount() {
+    if (!auth) {
+      // Twitch never authorized this page; only a reload can fix that.
+      window.location.reload();
+      return;
+    }
     model.account = 'loading';
     model.error = null;
     render();
@@ -449,12 +466,16 @@
   }
 
   var checking = false;
+  // Checks for a payment. It leaves the page alone while the streamer is
+  // connecting an account, and redraws only when something changed.
   function checkAccount(showErrors) {
-    if (checking || !auth) return;
+    if (checking || !auth || model.account !== 'connected' || model.switching) return;
     checking = true;
     AudD.twitchPhp('get_user', { jwt: auth.token }).then(function (res) {
+      if (model.account !== 'connected' || model.switching) return;
+      var before = JSON.stringify([model.account, model.recognition, model.info, model.awaitingPayment, model.error]);
       applyAccount(res, showErrors ? 'recognition' : 'quiet');
-      render();
+      if (showErrors || JSON.stringify([model.account, model.recognition, model.info, model.awaitingPayment, model.error]) !== before) render();
     }).catch(function () {
       if (showErrors) { model.error = { code: 'network', where: 'recognition' }; render(); }
     }).finally(function () { checking = false; });
@@ -500,7 +521,7 @@
       render();
     }).catch(function () {
       model.busy = null;
-      model.error = { code: 'network', where: source === 'token' ? 'token' : 'account' };
+      model.error = { code: 'network', where: 'account' };
       if (source === 'signin') { model.connect = 'choose'; model.signin = null; }
       render();
     });
@@ -512,13 +533,23 @@
   function startAwaitingPayment() {
     model.awaitingPayment = true;
     model.justPaid = false;
+    model.paymentFrom = { till: model.info ? model.info.tillText : '', state: model.recognition };
     var started = Date.now();
     clearInterval(paymentTimer);
     paymentTimer = setInterval(function () {
-      if (!model.awaitingPayment || Date.now() - started > 30 * 60000) { clearInterval(paymentTimer); return; }
+      if (!model.awaitingPayment || Date.now() - started > 30 * 60000) {
+        clearInterval(paymentTimer);
+        if (model.awaitingPayment) { model.awaitingPayment = false; render(); }
+        return;
+      }
       checkAccount(false);
     }, 15000);
     setTimeout(render, 0);
+  }
+
+  function stopAwaitingPayment() {
+    model.awaitingPayment = false;
+    clearInterval(paymentTimer);
   }
   window.addEventListener('focus', function () { if (model.awaitingPayment) checkAccount(false); });
   document.addEventListener('visibilitychange', function () {
@@ -567,6 +598,7 @@
         interval: Math.max(AudD.num(d.interval) || 5, 2)
       };
       render();
+      announce('Sign-in code ready: ' + model.signin.userCode.split('').join(' ') + '. Open the AudD sign-in page to approve it.');
       pollLater(run);
     }).catch(function () {
       if (run === signinRun) signInFailed('network');
@@ -584,24 +616,32 @@
     AudD.request(E.oauthToken, {
       form: { grant_type: DEVICE_GRANT, device_code: s.deviceCode, client_id: E.oauthClientId }
     }).then(function (r) {
-      if (run !== signinRun) return;
       var d = r.data || {};
+      if (run !== signinRun) {
+        // Cancelled while this request was on its way: don't keep the access.
+        if (d.access_token) { revoke(String(d.access_token), 'access_token'); revoke(d.refresh_token ? String(d.refresh_token) : null, 'refresh_token'); }
+        return;
+      }
       if (r.status === 200 && d.access_token) {
         link(run, String(d.access_token), d.refresh_token ? String(d.refresh_token) : null, typeof d.scope === 'string' ? d.scope : null);
         return;
       }
       var code = oauthCode(r);
       if (code === 'authorization_pending') { pollLater(run); return; }
-      if (code === 'slow_down' || r.status === 429 || r.status >= 500) {
+      if (code === 'slow_down' || r.status === 429 || r.status >= 500 || !r.data) {
         // Asked to poll less often, or the server failed: wait longer.
-        s.interval += 5;
+        var asked = AudD.num(d.interval);
+        s.interval = asked && asked > s.interval ? asked : s.interval + 5;
         pollLater(run);
         return;
       }
       signInFailed(code);
     }).catch(function () {
-      // The network or the server failed: keep trying until the code expires.
-      if (run === signinRun) pollLater(run);
+      // The connection failed: poll half as often (RFC 8628 section 3.5)
+      // and keep trying until the code expires.
+      if (run !== signinRun) return;
+      s.interval = Math.min(s.interval * 2, 60);
+      pollLater(run);
     });
   }
 

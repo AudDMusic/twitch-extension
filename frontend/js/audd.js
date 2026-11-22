@@ -144,10 +144,13 @@
     if (link && link === (E.songLinkBase || 'https://lis.tn/') + NO_SONG_PAGE) link = null;
     var playedAt = null;
     var p = num(raw.played_at);
-    if (p != null && p > 0) playedAt = p > 1e12 ? p : p * 1000;
+    var modern = p != null && p > 0;
+    if (modern) playedAt = p > 1e12 ? p : p * 1000;
     // Before played_at existed, the backend put the callback timestamp text
     // in song_length.
     if (playedAt == null) playedAt = parseUtcText(raw.song_length);
+    // A time outside 2015..tomorrow is a broken value, not a song time.
+    if (playedAt != null && (playedAt < 1420070400000 || playedAt > Date.now() + 86400000)) playedAt = null;
     var playLength = num(raw.play_length);
     return {
       title: title || artist,
@@ -156,16 +159,20 @@
       link: link,
       cover: coverFor(link),
       playedAt: playedAt,
-      playLength: playLength != null && playLength > 0 ? playLength : 0,
+      playLength: playLength != null && playLength > 0 && playLength < 86400 ? playLength : 0,
+      // Only a backend that sends played_at also sends play_length when AudD
+      // has it, so only then does a missing play_length mean the song had
+      // just started.
+      knowsMode: modern,
       key: [link || '', playedAt || '', title, artist].join('|')
     };
   }
   AudD.parseSong = parseSong;
 
   function byNewest(a, b) {
-    var ta = a.song.playedAt || 0;
-    var tb = b.song.playedAt || 0;
-    if (ta !== tb) return tb - ta;
+    var ta = a.song.playedAt;
+    var tb = b.song.playedAt;
+    if (ta && tb && ta !== tb) return tb - ta;
     return b.order - a.order;
   }
 
@@ -267,14 +274,19 @@
   var NOW_WINDOW = 6 * 60000;
   var JUST_WINDOW = 10 * 60000;
 
+  //  - From a backend without played_at, it can't be told whether the song
+  //    started or ended then, so a recent song is only the "Latest song".
+  //  - A time more than 2 minutes ahead of this device's clock can't be
+  //    placed either.
   function songStatus(song, now) {
-    if (!song.playedAt) return { kind: 'unknown', label: 'Latest song' };
+    if (!song.playedAt || song.playedAt - now > 120000) return { kind: 'unknown', label: 'Latest song' };
     if (song.playLength > 0) {
       var ended = song.playedAt + song.playLength * 1000;
       if (now - ended < JUST_WINDOW) return { kind: 'just', label: 'Just played' };
       return { kind: 'past', label: 'Played ' + ago(ended, now) };
     }
-    if (now - song.playedAt < NOW_WINDOW) return { kind: 'now', label: 'Now playing' };
+    if (song.knowsMode && now - song.playedAt < NOW_WINDOW) return { kind: 'now', label: 'Now playing' };
+    if (!song.knowsMode && now - song.playedAt < JUST_WINDOW) return { kind: 'unknown', label: 'Latest song' };
     return { kind: 'past', label: 'Played ' + ago(song.playedAt, now) };
   }
   AudD.songStatus = songStatus;
@@ -390,8 +402,10 @@
 
     function load() {
       clearTimeout(retryTimer);
+      if (stopped) return Promise.resolve();
       var url = E.lastSong + 'getChannelById/?ch_id=' + encodeURIComponent(channel);
       return request(url, { timeout: 12000 }).then(function (r) {
+        if (stopped) return;
         if (r.status === 200 && r.data && typeof r.data === 'object') {
           var songs = songsFromChannel(r.data);
           state.songs.forEach(function (s) { songs = mergeSong(songs, s); });
@@ -407,6 +421,7 @@
         state.retryAt = 0;
         emit();
       }).catch(function () {
+        if (stopped) return;
         state.failures++;
         var wait = RETRY_SECONDS[Math.min(state.failures - 1, RETRY_SECONDS.length - 1)];
         state.retryAt = Date.now() + wait * 1000;
@@ -432,7 +447,9 @@
       var url = E.lastSong + 'longpoll/?timeout=30&category=' + encodeURIComponent(channel) + '&since_time=' + since;
       request(url, { timeout: 45000 }).then(function (r) {
         var d = r.data;
-        if (r.status !== 200 || !d) throw new Error('HTTP ' + r.status);
+        // golongpoll answers its errors with 200 and {"error": ...}; anything
+        // without events or a timeout is a failure and backs off.
+        if (r.status !== 200 || !d || !(Array.isArray(d.events) || d.timeout)) throw new Error('HTTP ' + r.status);
         pollFailures = 0;
         if (Array.isArray(d.events)) {
           d.events.forEach(function (ev) {
@@ -458,19 +475,41 @@
       if (document.visibilityState === 'visible' && state.phase === 'ready' && Date.now() - loadedAt > 120000) load();
     }
 
+    // In case PubSub messages don't arrive: while the page is visible and
+    // the latest song is more than 4 minutes old, reload every 3 to 4
+    // minutes.
+    var refreshTimer = null;
+    function scheduleRefresh() {
+      refreshTimer = setTimeout(function () {
+        var top = state.songs[0];
+        var old = !top || !top.playedAt || Date.now() - top.playedAt > 4 * 60000;
+        if (!stopped && document.visibilityState === 'visible' && state.phase === 'ready' && old) load();
+        if (!stopped) scheduleRefresh();
+      }, (180 + Math.random() * 60) * 1000);
+    }
+
     return {
       state: state,
       start: function () {
         load();
-        if (options.longpoll) poll();
-        else document.addEventListener('visibilitychange', onVisible);
+        if (options.longpoll) {
+          poll();
+        } else {
+          document.addEventListener('visibilitychange', onVisible);
+          scheduleRefresh();
+        }
       },
       retryNow: function () { state.phase = state.songs.length ? state.phase : 'loading'; emit(); return load(); },
       push: push,
       pushMessage: function (message) {
         try { push(JSON.parse(message)); } catch (e) { /* not a song */ }
       },
-      stop: function () { stopped = true; clearTimeout(retryTimer); }
+      stop: function () {
+        stopped = true;
+        clearTimeout(retryTimer);
+        clearTimeout(refreshTimer);
+        document.removeEventListener('visibilitychange', onVisible);
+      }
     };
   };
 
@@ -517,7 +556,7 @@
         status.kind === 'now' ? equalizer() : null,
         el('span', { class: 'status__text', text: status.label })
       ]),
-      song.link ? el('span', { class: 'listen', 'aria-hidden': 'true' }, ['Listen', icon('open')]) : null
+      song.link ? el('span', { class: 'listen', 'aria-hidden': 'true' }, [el('span', { class: 'listen__label', text: 'Listen' }), icon('open')]) : null
     ]);
   }
 
@@ -540,14 +579,14 @@
 
   // Earlier songs, newest first, under a heading for each day before today
   // ("Yesterday", "Thu, Nov 19").
-  function historyList(songs, now) {
+  function historyList(songs, now, level) {
     var groups = el('div', { class: 'history__groups' });
     var list = null;
     var day = dayKey(now);
     songs.forEach(function (song) {
       if (song.playedAt && dayKey(song.playedAt) !== day) {
         day = dayKey(song.playedAt);
-        groups.appendChild(el('h3', { class: 'history__day', text: dayHeading(song.playedAt, now) }));
+        groups.appendChild(el('h' + (level + 1), { class: 'history__day', text: dayHeading(song.playedAt, now) }));
         list = null;
       }
       if (!list) {
@@ -600,10 +639,13 @@
     var current = { phase: 'loading', songs: [] };
     var note = null;
     var announcer = el('p', { class: 'visually-hidden', 'aria-live': 'polite' });
+    var announce = options.announce !== false && surface !== 'component';
+    // Heading level of "Recently played" (3 inside the configuration page)
+    var level = options.headingLevel || 2;
     var body = el('div', { class: 'view view--' + surface });
     root.textContent = '';
     root.appendChild(body);
-    if (surface !== 'component') root.appendChild(announcer);
+    if (announce) root.appendChild(announcer);
 
     var slots = {};
     var retryLabel = null;
@@ -676,7 +718,7 @@
             slots.historyList = el('div', { class: 'history__scroll' });
             slots.history = el('section', { class: 'history', 'aria-labelledby': 'history-heading' }, [
               el('div', { class: 'history__head' }, [
-                el('h2', { id: 'history-heading', class: 'history__heading', text: 'Recently played' }),
+                el('h' + level, { id: 'history-heading', class: 'history__heading', text: 'Recently played' }),
                 surface === 'panel' ? brand() : null
               ]),
               slots.historyList
@@ -717,12 +759,13 @@
 
       if (slots.historyList) {
         var rest = songs.slice(1);
-        var keys = rest.map(function (s) { return s.key; }).join('\n');
+        // The date is part of the key: "Today" and "Yesterday" move at midnight.
+        var keys = new Date(now).toDateString() + '\n' + rest.map(function (s) { return s.key; }).join('\n');
         if (keys !== last.listKeys) {
           var previous = last.listKeys == null ? null : last.listKeys.split('\n');
           slots.historyList.textContent = '';
           if (rest.length) {
-            var list = historyList(rest, now);
+            var list = historyList(rest, now, level);
             if (previous) {
               Array.prototype.forEach.call(list.querySelectorAll('li[data-key]'), function (li) {
                 if (previous.indexOf(li.getAttribute('data-key')) < 0) li.classList.add('is-new');

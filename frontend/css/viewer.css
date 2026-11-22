@@ -107,8 +107,21 @@ a.now:focus-visible {
 
 .now__text {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
+  container-type: inline-size;
+}
+
+/* Narrow (zoomed in, or a long label): the Listen pill keeps only its icon */
+@container (max-width: 210px) {
+  .listen__label {
+    display: none;
+  }
+
+  .listen {
+    padding: 2px 5px;
+  }
 }
 
 .status-row {
