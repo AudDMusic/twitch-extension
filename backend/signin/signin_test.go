@@ -1,8 +1,10 @@
 package signin
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,229 +12,401 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/golang-jwt/jwt"
 )
 
-var testSecret = []byte("test-extension-secret")
+// fakeAudD stands in for AudD's token and revocation endpoints and the MCP
+// server.
+type fakeAudD struct {
+	t          *testing.T
+	mu         sync.Mutex
+	challenge  string // the code_challenge of the authorization request
+	tokenError string
+	mcpStatus  int
+	revoked    []string
+	srv        *httptest.Server
+}
 
-func twitchJWT(t *testing.T, secret []byte, role string, exp time.Time) string {
-	t.Helper()
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"exp":        exp.Unix(),
-		"channel_id": "57165160",
-		"user_id":    "57165160",
-		"role":       role,
+func newFakeAudD(t *testing.T) *fakeAudD {
+	f := &fakeAudD{t: t}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Header().Set("Content-Type", "application/json")
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		sum := sha256.Sum256([]byte(r.PostForm.Get("code_verifier")))
+		ok := r.PostForm.Get("grant_type") == "authorization_code" && r.PostForm.Get("code") == "good-code" &&
+			r.PostForm.Get("client_id") == "client-1" && r.PostForm.Get("redirect_uri") == "https://ebs.example/callback/" &&
+			base64.RawURLEncoding.EncodeToString(sum[:]) == f.challenge
+		if f.tokenError != "" || !ok {
+			e := f.tokenError
+			if e == "" {
+				e = "invalid_grant"
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": e})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "access-1", "refresh_token": "refresh-1"})
 	})
-	s, err := tok.SignedString(secret)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
-}
-
-// fakeMCP is a minimal AudD MCP server: one access token, get_api_token
-// listed only when the token has token:read.
-type fakeMCP struct {
-	mu          sync.Mutex
-	token       string
-	tokenRead   bool
-	sse         bool
-	status      int    // non-zero: answer every request with this status
-	toolIsError string // non-empty: get_api_token returns isError with this text
-	textOnly    bool   // put the token only in the text content
-	calls       []string
-	deleted     bool
-}
-
-func (f *fakeMCP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.status != 0 {
-		w.WriteHeader(f.status)
-		return
-	}
-	if r.Header.Get("Authorization") != "Bearer "+f.token {
-		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-	if r.Method == http.MethodDelete {
-		f.deleted = true
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	var msg struct {
-		ID     *int                   `json:"id"`
-		Method string                 `json:"method"`
-		Params map[string]interface{} `json:"params"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&msg)
-	f.calls = append(f.calls, msg.Method)
-	if msg.Method != "initialize" && r.Header.Get("Mcp-Session-Id") != "session-1" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if msg.ID == nil {
-		w.WriteHeader(http.StatusAccepted)
-		return
-	}
-	var result interface{}
-	var rpcErr interface{}
-	switch msg.Method {
-	case "initialize":
-		w.Header().Set("Mcp-Session-Id", "session-1")
-		result = map[string]interface{}{"protocolVersion": "2025-06-18", "capabilities": map[string]interface{}{"tools": map[string]interface{}{}}}
-	case "tools/call":
-		name, _ := msg.Params["name"].(string)
-		switch {
-		case name != "get_api_token" || !f.tokenRead:
-			rpcErr = map[string]interface{}{"code": -32602, "message": "Unknown tool: " + name}
-		case f.toolIsError != "":
-			result = map[string]interface{}{"content": []interface{}{map[string]interface{}{"type": "text", "text": f.toolIsError}}, "isError": true}
-		case f.textOnly:
-			result = map[string]interface{}{"content": []interface{}{map[string]interface{}{"type": "text", "text": `{"api_token":"apitoken123"}`}}}
-		default:
-			result = map[string]interface{}{
-				"content":           []interface{}{map[string]interface{}{"type": "text", "text": `{"api_token":"apitoken123"}`}},
-				"structuredContent": map[string]interface{}{"api_token": "apitoken123"},
-			}
+	mux.HandleFunc("/revoke", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		f.mu.Lock()
+		f.revoked = append(f.revoked, r.PostForm.Get("token"))
+		f.mu.Unlock()
+	})
+	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		status := f.mcpStatus
+		f.mu.Unlock()
+		if r.Header.Get("Authorization") != "Bearer access-1" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
 		}
-	}
-	resp := map[string]interface{}{"jsonrpc": "2.0", "id": *msg.ID}
-	if rpcErr != nil {
-		resp["error"] = rpcErr
-	} else {
-		resp["result"] = result
-	}
-	b, _ := json.Marshal(resp)
-	if f.sse {
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintf(w, "event: message\ndata: %s\n\n", b)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(b)
+		if status != 0 {
+			w.WriteHeader(status)
+			return
+		}
+		if r.Method == http.MethodDelete {
+			return
+		}
+		var msg struct {
+			ID     *int   `json:"id"`
+			Method string `json:"method"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&msg)
+		w.Header().Set("Mcp-Session-Id", "s1")
+		if msg.ID == nil {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		var result interface{}
+		switch msg.Method {
+		case "initialize":
+			result = map[string]interface{}{"protocolVersion": mcpProtocolVersion}
+		case "tools/call":
+			result = map[string]interface{}{"content": []map[string]string{{"type": "text", "text": `{"api_token":"api-token-1"}`}}}
+		}
+		// Answer tools/call as an event stream and the rest as plain JSON.
+		b, _ := json.Marshal(map[string]interface{}{"jsonrpc": "2.0", "id": *msg.ID, "result": result})
+		if msg.Method == "tools/call" {
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: message\ndata: " + string(b) + "\n\n"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(b)
+	})
+	f.srv = httptest.NewServer(mux)
+	t.Cleanup(f.srv.Close)
+	return f
 }
 
-func post(t *testing.T, h http.Handler, form url.Values) (int, map[string]string) {
+func (f *fakeAudD) service() *Service {
+	return New(Config{
+		ClientID:    "client-1",
+		RedirectURI: "https://ebs.example/callback/",
+		CheckBroadcaster: func(jwt string) (string, string) {
+			switch jwt {
+			case "broadcaster":
+				return "1001", ""
+			case "other-broadcaster":
+				return "2002", ""
+			case "viewer":
+				return "", ErrNotBroadcaster
+			}
+			return "", ErrWrongJWT
+		},
+		ChannelName: func(id string) string {
+			if id == "1001" {
+				return "some<b>streamer"
+			}
+			return ""
+		},
+		AuthorizeURL: "https://audd.example/authorize",
+		TokenURL:     f.srv.URL + "/token",
+		RevokeURL:    f.srv.URL + "/revoke",
+		MCPURL:       f.srv.URL + "/mcp",
+	})
+}
+
+const testSecret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+func sessionOf(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	return hex.EncodeToString(sum[:])
+}
+
+func post(h http.HandlerFunc, form url.Values) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("POST", "/", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h(w, r)
+	return w
+}
+
+func start(t *testing.T, s *Service, jwt, session string) (int, map[string]string) {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/lastSong/auddApiToken/", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	var body map[string]string
-	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Errorf("missing CORS header")
+	w := post(s.Start, url.Values{"jwt": {jwt}, "session": {session}})
+	out := map[string]string{}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("start: %v in %q", err, w.Body.String())
 	}
-	if rec.Header().Get("Cache-Control") != "no-store" {
-		t.Errorf("responses must not be cached")
-	}
-	return rec.Code, body
+	return w.Code, out
 }
 
-func TestReadsTheAPIToken(t *testing.T) {
-	for _, sse := range []bool{false, true} {
-		for _, textOnly := range []bool{false, true} {
-			f := &fakeMCP{token: "access-1", tokenRead: true, sse: sse, textOnly: textOnly}
-			srv := httptest.NewServer(f)
-			h := Handler(Config{ExtensionSecret: testSecret, MCPURL: srv.URL})
-			code, body := post(t, h, url.Values{"jwt": {twitchJWT(t, testSecret, "broadcaster", time.Now().Add(time.Hour))}, "access_token": {"access-1"}})
-			srv.Close()
-			if code != http.StatusOK || body["api_token"] != "apitoken123" {
-				t.Fatalf("sse=%v textOnly=%v: got %d %v", sse, textOnly, code, body)
-			}
-			want := "initialize,notifications/initialized,tools/call"
-			if got := strings.Join(f.calls, ","); got != want {
-				t.Errorf("calls = %s, want %s", got, want)
-			}
-			if !f.deleted {
-				t.Errorf("the MCP session was not closed")
-			}
+// open starts a sign-in as "broadcaster", follows the page's link and returns
+// the authorization request.
+func (f *fakeAudD) open(t *testing.T, s *Service, session string) url.Values {
+	t.Helper()
+	if code, out := start(t, s, "broadcaster", session); code != http.StatusOK || out["status"] != StatusPending {
+		t.Fatalf("start: %d %v", code, out)
+	}
+	w := httptest.NewRecorder()
+	s.Open(w, httptest.NewRequest("GET", "/lastSong/signIn/open/?session="+session, nil))
+	if w.Code != http.StatusFound {
+		t.Fatalf("open: status %d, body %s", w.Code, w.Body.String())
+	}
+	u, err := url.Parse(w.Header().Get("Location"))
+	if err != nil || !strings.HasPrefix(u.String(), "https://audd.example/authorize?") {
+		t.Fatalf("open: redirected to %q", w.Header().Get("Location"))
+	}
+	q := u.Query()
+	f.mu.Lock()
+	f.challenge = q.Get("code_challenge")
+	f.mu.Unlock()
+	return q
+}
+
+// arrive is AudD sending the person back to the callback address.
+func arrive(s *Service, query string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	s.Callback(w, httptest.NewRequest("GET", "/lastSong/signIn/callback/?"+query, nil))
+	return w
+}
+
+// callback is the person arriving from AudD and confirming the channel.
+func callback(s *Service, query string) *httptest.ResponseRecorder {
+	w := arrive(s, query)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `name="decision" value="link"`) {
+		return w
+	}
+	form, _ := url.ParseQuery(query)
+	form.Set("decision", "link")
+	return post(s.Callback, form)
+}
+
+func result(t *testing.T, s *Service, jwt, secret string) (int, map[string]string) {
+	t.Helper()
+	w := post(s.Result, url.Values{"jwt": {jwt}, "secret": {secret}})
+	out := map[string]string{}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("result: %v in %q", err, w.Body.String())
+	}
+	return w.Code, out
+}
+
+func TestSignIn(t *testing.T) {
+	f := newFakeAudD(t)
+	s := f.service()
+	session := sessionOf(testSecret)
+
+	if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusUnknown {
+		t.Fatalf("before open: %v", out)
+	}
+	q := f.open(t, s, session)
+	for k, want := range map[string]string{"response_type": "code", "client_id": "client-1", "scope": "token:read",
+		"redirect_uri": "https://ebs.example/callback/", "state": session, "code_challenge_method": "S256"} {
+		if q.Get(k) != want {
+			t.Errorf("authorization request: %s = %q, want %q", k, q.Get(k), want)
 		}
 	}
+	if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusPending {
+		t.Fatalf("after open: %v", out)
+	}
+	// Opening the link again keeps the same sign-in.
+	if again := f.open(t, s, session); again.Get("code_challenge") != q.Get("code_challenge") {
+		t.Error("reopening the link changed the code challenge")
+	}
+
+	// Arriving from AudD only asks to confirm the channel, by name; nothing is
+	// read yet.
+	w := arrive(s, "code=good-code&state="+session)
+	if !strings.Contains(w.Body.String(), "the Twitch channel some&lt;b&gt;streamer?") {
+		t.Fatalf("confirmation page: %s", w.Body.String())
+	}
+	if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusPending {
+		t.Fatalf("before confirming: %v", out)
+	}
+	w = callback(s, "code=good-code&state="+session)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "account is linked") {
+		t.Fatalf("callback: %d %s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Error("callback page has no Referrer-Policy: no-referrer")
+	}
+	f.mu.Lock()
+	revoked := strings.Join(f.revoked, ",")
+	f.mu.Unlock()
+	if revoked != "refresh-1,access-1" {
+		t.Errorf("revoked %q", revoked)
+	}
+
+	// Only the broadcaster who started the sign-in and holds the secret gets
+	// the token, once.
+	if _, out := result(t, s, "other-broadcaster", testSecret); out["status"] != StatusUnknown || out["api_token"] != "" {
+		t.Errorf("another channel: %v", out)
+	}
+	if code, out := result(t, s, "viewer", testSecret); code != http.StatusForbidden || out["error"] != ErrNotBroadcaster {
+		t.Errorf("viewer: %d %v", code, out)
+	}
+	if code, out := result(t, s, "garbage", testSecret); code != http.StatusUnauthorized || out["error"] != ErrWrongJWT {
+		t.Errorf("bad jwt: %d %v", code, out)
+	}
+	if _, out := result(t, s, "broadcaster", strings.Repeat("f", 64)); out["status"] != StatusUnknown || out["api_token"] != "" {
+		t.Errorf("other secret: %v", out)
+	}
+	if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusDone || out["api_token"] != "api-token-1" {
+		t.Fatalf("done: %v", out)
+	}
+	if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusUnknown || out["api_token"] != "" {
+		t.Errorf("second read: %v", out)
+	}
+	// The code can't be replayed and the link is used up.
+	if w := callback(s, "code=good-code&state="+session); w.Code != http.StatusGone {
+		t.Errorf("replayed callback: %d", w.Code)
+	}
 }
 
-func TestErrors(t *testing.T) {
-	good := func(t *testing.T) string { return twitchJWT(t, testSecret, "broadcaster", time.Now().Add(time.Hour)) }
-	cases := []struct {
-		name   string
-		mcp    *fakeMCP
-		form   func(t *testing.T) url.Values
-		status int
-		code   string
-	}{
-		{"missing access token", &fakeMCP{}, func(t *testing.T) url.Values { return url.Values{"jwt": {good(t)}} }, 400, ErrBadRequest},
-		{"missing jwt", &fakeMCP{}, func(t *testing.T) url.Values { return url.Values{"access_token": {"a"}} }, 400, ErrBadRequest},
-		{"jwt signed with another secret", &fakeMCP{}, func(t *testing.T) url.Values {
-			return url.Values{"jwt": {twitchJWT(t, []byte("other"), "broadcaster", time.Now().Add(time.Hour))}, "access_token": {"a"}}
-		}, 401, ErrWrongJWT},
-		{"expired jwt", &fakeMCP{}, func(t *testing.T) url.Values {
-			return url.Values{"jwt": {twitchJWT(t, testSecret, "broadcaster", time.Now().Add(-time.Minute))}, "access_token": {"a"}}
-		}, 401, ErrWrongJWT},
-		{"viewer jwt", &fakeMCP{}, func(t *testing.T) url.Values {
-			return url.Values{"jwt": {twitchJWT(t, testSecret, "viewer", time.Now().Add(time.Hour))}, "access_token": {"a"}}
-		}, 403, ErrNotBroadcaster},
-		{"access token not accepted", &fakeMCP{token: "other", tokenRead: true}, func(t *testing.T) url.Values {
-			return url.Values{"jwt": {good(t)}, "access_token": {"access-1"}}
-		}, 401, ErrSignInExpired},
-		{"token:read not granted", &fakeMCP{token: "access-1"}, func(t *testing.T) url.Values {
-			return url.Values{"jwt": {good(t)}, "access_token": {"access-1"}}
-		}, 403, ErrPermissionMissing},
-		{"tool error mentioning the scope", &fakeMCP{token: "access-1", tokenRead: true, toolIsError: "requires the token:read scope"}, func(t *testing.T) url.Values {
-			return url.Values{"jwt": {good(t)}, "access_token": {"access-1"}}
-		}, 403, ErrPermissionMissing},
-		{"tool error", &fakeMCP{token: "access-1", tokenRead: true, toolIsError: "database is down"}, func(t *testing.T) url.Values {
-			return url.Values{"jwt": {good(t)}, "access_token": {"access-1"}}
-		}, 502, ErrServiceUnavailable},
-		{"server error", &fakeMCP{status: 503}, func(t *testing.T) url.Values {
-			return url.Values{"jwt": {good(t)}, "access_token": {"access-1"}}
-		}, 502, ErrServiceUnavailable},
+func TestDeclined(t *testing.T) {
+	session := sessionOf(testSecret)
+	t.Run("on AudD's page", func(t *testing.T) {
+		f := newFakeAudD(t)
+		s := f.service()
+		f.open(t, s, session)
+		if w := callback(s, "error=access_denied&state="+session); !strings.Contains(w.Body.String(), "cancelled") {
+			t.Fatalf("callback: %s", w.Body.String())
+		}
+		if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusDeclined {
+			t.Fatalf("result: %v", out)
+		}
+	})
+	t.Run("on the channel confirmation", func(t *testing.T) {
+		f := newFakeAudD(t)
+		s := f.service()
+		f.open(t, s, session)
+		w := post(s.Callback, url.Values{"code": {"good-code"}, "state": {session}, "decision": {"cancel"}})
+		if !strings.Contains(w.Body.String(), "cancelled") {
+			t.Fatalf("callback: %s", w.Body.String())
+		}
+		if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusDeclined {
+			t.Fatalf("result: %v", out)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if len(f.revoked) != 0 {
+			t.Error("the code was exchanged after a cancel")
+		}
+	})
+}
+
+func TestStart(t *testing.T) {
+	f := newFakeAudD(t)
+	s := f.service()
+	session := sessionOf(testSecret)
+	// The link doesn't work before the sign-in is started.
+	w := httptest.NewRecorder()
+	s.Open(w, httptest.NewRequest("GET", "/lastSong/signIn/open/?session="+session, nil))
+	if w.Code != http.StatusGone {
+		t.Errorf("open before start: %d", w.Code)
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			srv := httptest.NewServer(c.mcp)
-			defer srv.Close()
-			h := Handler(Config{ExtensionSecret: testSecret, MCPURL: srv.URL})
-			code, body := post(t, h, c.form(t))
-			if code != c.status || body["error"] != c.code {
-				t.Fatalf("got %d %v, want %d %s", code, body, c.status, c.code)
+	if code, out := start(t, s, "viewer", session); code != http.StatusForbidden || out["error"] != ErrNotBroadcaster {
+		t.Errorf("viewer: %d %v", code, out)
+	}
+	if code, out := start(t, s, "garbage", session); code != http.StatusUnauthorized || out["error"] != ErrWrongJWT {
+		t.Errorf("bad jwt: %d %v", code, out)
+	}
+	if code, _ := start(t, s, "broadcaster", "not-a-session"); code != http.StatusBadRequest {
+		t.Errorf("bad session: %d", code)
+	}
+	if code, _ := start(t, s, "broadcaster", session); code != http.StatusOK {
+		t.Fatalf("start: %d", code)
+	}
+	if code, _ := start(t, s, "broadcaster", session); code != http.StatusOK {
+		t.Errorf("starting again: %d", code)
+	}
+	if code, _ := start(t, s, "other-broadcaster", session); code != http.StatusBadRequest {
+		t.Errorf("another channel taking the session: %d", code)
+	}
+	// A channel keeps a limited number of sign-ins; the oldest is dropped.
+	now := time.Now()
+	s.now = func() time.Time { now = now.Add(time.Second); return now }
+	for i := 0; i < maxChannelSessions; i++ {
+		if code, _ := start(t, s, "broadcaster", sessionOf(strings.Repeat(string(rune('a'+i)), 64))); code != http.StatusOK {
+			t.Fatalf("start %d: %d", i, code)
+		}
+	}
+	if len(s.sessions) != maxChannelSessions {
+		t.Errorf("%d sessions kept, want %d", len(s.sessions), maxChannelSessions)
+	}
+	if _, kept := s.sessions[session]; kept {
+		t.Error("the oldest session was not dropped")
+	}
+}
+
+func TestFailures(t *testing.T) {
+	for name, tc := range map[string]struct {
+		tokenError string
+		mcpStatus  int
+		code       string
+		want       string
+	}{
+		"wrong code":         {code: "bad-code", want: ErrSignInExpired},
+		"token server error": {code: "good-code", tokenError: "server_error", want: ErrServiceUnavailable},
+		"mcp down":           {code: "good-code", mcpStatus: 502, want: ErrServiceUnavailable},
+		"scope not granted":  {code: "good-code", mcpStatus: 403, want: ErrPermissionMissing},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeAudD(t)
+			f.tokenError, f.mcpStatus = tc.tokenError, tc.mcpStatus
+			s := f.service()
+			session := sessionOf(testSecret)
+			f.open(t, s, session)
+			if w := callback(s, "code="+tc.code+"&state="+session); !strings.Contains(w.Body.String(), "didn&#39;t work") {
+				t.Fatalf("callback: %s", w.Body.String())
 			}
-			if body["api_token"] != "" {
-				t.Fatalf("an error response carried a token")
+			if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusFailed || out["error"] != tc.want {
+				t.Fatalf("result: %v, want error %s", out, tc.want)
 			}
 		})
 	}
 }
 
-func TestUnreachableMCP(t *testing.T) {
-	srv := httptest.NewServer(http.NotFoundHandler())
-	u := srv.URL
-	srv.Close() // nothing listens there now
-	h := Handler(Config{ExtensionSecret: testSecret, MCPURL: u, HTTPClient: &http.Client{Timeout: 2 * time.Second}})
-	code, body := post(t, h, url.Values{"jwt": {twitchJWT(t, testSecret, "broadcaster", time.Now().Add(time.Hour))}, "access_token": {"a"}})
-	if code != http.StatusBadGateway || body["error"] != ErrServiceUnavailable {
-		t.Fatalf("got %d %v", code, body)
+func TestExpiryAndBadInput(t *testing.T) {
+	f := newFakeAudD(t)
+	s := f.service()
+	now := time.Now()
+	s.now = func() time.Time { return now }
+	session := sessionOf(testSecret)
+	f.open(t, s, session)
+	now = now.Add(sessionTTL + time.Second)
+	if w := callback(s, "code=good-code&state="+session); w.Code != http.StatusGone {
+		t.Errorf("expired callback: %d", w.Code)
 	}
-}
-
-func TestMethods(t *testing.T) {
-	h := Handler(Config{ExtensionSecret: testSecret})
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodOptions, "/", nil))
-	if rec.Code != http.StatusNoContent || rec.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Fatalf("OPTIONS: %d", rec.Code)
+	if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusUnknown {
+		t.Errorf("expired result: %v", out)
 	}
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("GET: %d", rec.Code)
+	for _, bad := range []string{"", "abc", strings.Repeat("G", 64), strings.Repeat("a", 65)} {
+		w := httptest.NewRecorder()
+		s.Open(w, httptest.NewRequest("GET", "/lastSong/signIn/open/?session="+bad, nil))
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("open with session %q: %d", bad, w.Code)
+		}
 	}
-}
-
-func TestEmptySecretRefusesEveryJWT(t *testing.T) {
-	if checkBroadcaster(nil, twitchJWT(t, []byte(""), "broadcaster", time.Now().Add(time.Hour))) != ErrWrongJWT {
-		t.Fatal("a JWT was accepted without an extension secret")
+	if code, out := result(t, s, "broadcaster", "short"); code != http.StatusBadRequest || out["error"] != ErrBadRequest {
+		t.Errorf("short secret: %d %v", code, out)
+	}
+	if w := callback(s, "code=x&state=unknown"); w.Code != http.StatusGone {
+		t.Errorf("unknown state: %d", w.Code)
 	}
 }

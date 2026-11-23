@@ -90,6 +90,13 @@ const callbacksSecret = ""
 // !   the previous version installed, which means that you'll need to get the version of the extension installed
 // !   on a Twitch channel from the frontend, which is currently not implemented
 const extensionVersion = "0.1.0"
+
+// The OAuth client of "Sign in with AudD" on the configuration page (see
+// package signin). Register your own with AudD's authorization server
+// (https://dashboard-api.audd.io/oauth2/register) for the public address of
+// your /lastSong/signIn/callback/.
+const signInClientId = ""
+const signInRedirectURI = "https://this-service.com/lastSong/signIn/callback/"
 const extensionOwnerUserId = "57165160" // ID of the user who created/owns the extension
 const extensionClientId = "ikcbah7wbue48v7doo4edulmxblt64"
 const extensionClientSecret = ""
@@ -222,6 +229,42 @@ func lookUpTwitchUser(route string) (*helix.User, error) {
 		return nil, fmt.Errorf("got empty users from Twitch for %q", route)
 	}
 	return &resp.Data.Users[0], nil
+}
+
+// checkBroadcasterJwt verifies a Twitch extension JWT for package signin: it
+// returns the channel ID when the JWT is valid and belongs to the channel's
+// broadcaster.
+func checkBroadcasterJwt(token string) (string, string) {
+	claims := jwt.MapClaims{}
+	_, err := jwt.ParseWithClaims(token, claims, func(t *jwt.Token) (interface{}, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
+		}
+		return extensionSecret, nil
+	})
+	if err != nil || len(extensionSecret) == 0 {
+		return "", signin.ErrWrongJWT
+	}
+	role, _ := claims["role"].(string)
+	channel, _ := claims["channel_id"].(string)
+	user, _ := claims["user_id"].(string)
+	if role != "broadcaster" || channel == "" || channel == "0" || user != channel {
+		return "", signin.ErrNotBroadcaster
+	}
+	return channel, ""
+}
+
+// twitchChannelName returns a channel's display name for package signin, or
+// "" when Twitch doesn't return it.
+func twitchChannelName(channelId string) string {
+	resp, err := TwitchClient.GetUsers(&helix.UsersParams{IDs: []string{channelId}})
+	if capture(err) || len(resp.Data.Users) == 0 {
+		return ""
+	}
+	if name := resp.Data.Users[0].DisplayName; name != "" {
+		return name
+	}
+	return resp.Data.Users[0].Login
 }
 
 // Retrieves the last song
@@ -673,13 +716,19 @@ func startServer() {
 	if LongPollManager != nil {
 		mux.HandleFunc("/lastSong/longpoll/", addCorsHeaders(LongPollManager.SubscriptionHandler))
 	}
-	// Used by the configuration page after "Sign in with AudD": reads the
-	// streamer's API token from the AudD MCP server (see package signin)
-	mux.HandleFunc("/lastSong/auddApiToken/", raven.RecoveryHandler(signin.Handler(signin.Config{
-		ExtensionSecret: extensionSecret,
-		MCPURL:          signin.DefaultMCPURL,
-		ClientVersion:   extensionVersion,
-	})))
+	// "Sign in with AudD" on the configuration page (see package signin)
+	signIn := signin.New(signin.Config{
+		ClientID:         signInClientId,
+		RedirectURI:      signInRedirectURI,
+		CheckBroadcaster: checkBroadcasterJwt,
+		ChannelName:      twitchChannelName,
+		Report:           func(err error) { capture(err) },
+		ClientVersion:    extensionVersion,
+	})
+	mux.HandleFunc("/lastSong/signIn/start/", raven.RecoveryHandler(signIn.Start))
+	mux.HandleFunc("/lastSong/signIn/open/", raven.RecoveryHandler(signIn.Open))
+	mux.HandleFunc("/lastSong/signIn/callback/", raven.RecoveryHandler(signIn.Callback))
+	mux.HandleFunc("/lastSong/signIn/result/", raven.RecoveryHandler(signIn.Result))
 
 	port := ":8334"
 	description := "Last song microservice"

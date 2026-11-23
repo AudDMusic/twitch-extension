@@ -24,7 +24,7 @@
     signin_unavailable: 'Signing in with AudD isn’t available right now. Paste your API token instead: it’s on dashboard.audd.io.',
     signin_declined: 'The sign-in was declined on the AudD page. Sign in again when you’re ready.',
     signin_timeout: 'The sign-in wasn’t finished within 10 minutes, so it stopped. Sign in again when you’re ready.',
-    token_permission_missing: 'AudD didn’t share your API token because that permission was unticked. Sign in again and leave it ticked.',
+    token_permission_missing: 'AudD didn’t give the extension permission to read your API token. Sign in again and approve the request.',
     sign_in_expired: 'The AudD sign-in expired before your account was linked. Sign in again.',
     account_service_unavailable: 'AudD’s account service didn’t respond. Try again in a minute, or paste your API token instead.'
   };
