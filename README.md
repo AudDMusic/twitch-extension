@@ -34,18 +34,18 @@ The widget fits any source size; for example 600 × 160, or 600 × 420 with `&hi
 
 ## Sign in with AudD
 
-The configuration page links a channel to an AudD account without the streamer copying an API token:
+The configuration page links a channel to an AudD account without the streamer copying an API token. The backend runs the sign-in; the page starts it, opens it, and asks for the result:
 
-1. The page starts an OAuth 2.0 device authorization ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)) at AudD's authorization server, `https://dashboard-api.audd.io`, with the public client `audd-twitch` and the scope `token:read`, for the resource `https://mcp.audd.io`.
-2. The streamer opens the AudD sign-in page in a new tab, checks the code, and approves. The page polls the token endpoint meanwhile.
-3. The page sends the access token and its Twitch extension JWT to the backend's `/lastSong/auddApiToken/`. The backend accepts only a broadcaster JWT, reads the account's API token with the `get_api_token` tool of the AudD MCP server (which doesn't answer browsers on the extension's origin), and returns it.
-4. The page links the account with `dashboard.audd.io/api/twitch.php?save_user`, the same request it makes for a pasted token, then revokes the OAuth tokens.
+1. When the page shows the sign-in, it makes a secret (32 random bytes as 64 lowercase hex digits) and its SHA-256 in lowercase hex, the session. It registers the session with the backend's `/lastSong/signIn/start/`, together with its Twitch extension JWT; the backend accepts only the broadcaster's.
+2. *Sign in with AudD* is a plain link to `/lastSong/signIn/open/?session=<session>`, opened in a new tab. The backend sends that tab to AudD's approval page; after the streamer approves, the backend asks them to confirm the Twitch channel with *Link account*, then says they can go back to Twitch.
+3. From the click, the page asks `/lastSong/signIn/result/` every 2 seconds, for up to 10 minutes, with its JWT and the secret. Only the page knows the secret: the link carries just its hash.
+4. When the result has the account's API token, the page links the account with `dashboard.audd.io/api/twitch.php?save_user`, the same request it makes for a pasted token. The backend has already ended the sign-in at AudD by then.
 
-If the client or the backend endpoint isn't available, the page offers to paste an API token instead.
+Each session is used once: after a result, or after 10 minutes, the page starts a new one for the next try, and it replaces an unused one before its 10 minutes run out. If the backend can't start a sign-in or can't be reached, the page offers to paste an API token instead.
 
 ## Run it locally
 
-`dev/preview` serves the extension with a stand-in for Twitch's extension helper and mocks of everything it talks to: the backend, `twitch.php`, the OAuth device flow and the MCP server. It needs only Go.
+`dev/preview` serves the extension with a stand-in for Twitch's extension helper and mocks of everything it talks to: the backend, including its sign-in, and `twitch.php`. It needs only Go.
 
 ```sh
 cd dev
@@ -59,14 +59,14 @@ Then open http://127.0.0.1:8787/ for a gallery of every view in every state, lig
 | `theme` | `dark`, `light` (what Twitch's `onContext` reports) |
 | `channel` | the songs the mock backend has: `typical`, `just`, `recent`, `stale`, `one`, `full`, `long`, `nocover`, `youtube`, `legacy`, `empty`, `empty-prod`, `slow`, `down`, `flaky` |
 | `every` | push a new song through PubSub every N seconds |
-| `role` | `viewer`, `broadcaster` |
-| `account` | what `twitch.php` reports: `none`, `active`, `expiring`, `expired`, `unpaid`, `error-<code>`, `down`, `slow` |
-| `signin` | make Sign in with AudD fail: `unregistered` (unknown client), `nobackend` (backend without the endpoint), `nomcp` (MCP server unreachable) |
+| `role` | `viewer`, `broadcaster`, or another role such as `moderator` |
+| `account` | what `twitch.php` reports: `none`, `active`, `expiring`, `expired`, `unpaid`, `error-<code>`, `down`, `slow`, `slowlink` (not linked, and linking takes 8 seconds) |
+| `signin` | make Sign in with AudD unavailable: `nobackend` (backend without the sign-in, 404), `down` (502), `busy` (start answers 429), `noresult` (the tab works, but the result answers 502) |
 | `platform` | `mobile` for the Twitch mobile app |
 
-On the configuration page, *Sign in with AudD* opens a local approval page; the mock accepts the API tokens `good-token`, `expired-token` and `unpaid-token`. The preview serves pages with a content security policy like Twitch's, so inline scripts or requests to other hosts fail the same way they would on Twitch.
+On the configuration page, *Sign in with AudD* opens a local stand-in for AudD's approval page, where you pick the account and how the sign-in ends, then for the backend's *Link account* page. With `role=moderator` the backend refuses to start the sign-in. When you paste a token instead, the mock accepts `good-token`, `expired-token` and `unpaid-token`. The preview serves pages with a content security policy like Twitch's, so inline scripts or requests to other hosts fail the same way they would on Twitch.
 
-`dev/screenshots.mjs` takes a screenshot of every state and reports any request outside the preview server, CSP violation or script error. It needs [playwright-core](https://www.npmjs.com/package/playwright-core) and a Chromium:
+`dev/screenshots.mjs` takes a screenshot of every state and reports any request outside the preview server, CSP violation or script error. It needs [playwright-core](https://www.npmjs.com/package/playwright-core) 1.45 or later and a Chromium:
 
 ```sh
 go run ./preview -before /path/to/an/older/frontend &   # -before is optional: serves it at /before/
@@ -83,7 +83,9 @@ The backend (`backend/`, Go) receives the AudD stream callbacks, keeps the last 
 | `/lastSong/getChannelById/?ch_id=<channel ID>` | A channel's songs: `{"NumericalId", "StringId", "History": {"OldestElement", "Elements": [...]}}` |
 | `/lastSong/getChannel/?ch_id=<login>` | The same, by Twitch login |
 | `/lastSong/longpoll/?category=<channel ID>&timeout=30&since_time=<ms>` | New songs, for clients outside Twitch |
-| `/lastSong/auddApiToken/` | The Sign in with AudD step above (POST `jwt`, `access_token`) |
+| `/lastSong/signIn/start/` | Starts a sign-in (POST `jwt`, `session`): `{"status": "pending"}`, or `{"error": ...}` with 400, 401, 403 or 429 |
+| `/lastSong/signIn/open/?session=<session>` | The tab *Sign in with AudD* opens: AudD's approval, then *Link account* |
+| `/lastSong/signIn/result/` | A sign-in's result (POST `jwt`, `secret`): `{"status": "unknown"}` or `"pending"` while it runs, then `"done"` with `api_token`, `"declined"`, or `"failed"` with `error` (`sign_in_expired`, `token_permission_missing`, `account_service_unavailable`) |
 
 Each song is an AudD recognition result (`artist`, `title`, `album`, `release_date`, `label`, `song_link`, `score`) plus `played_at` (the AudD callback timestamp, Unix seconds) and `play_length` (seconds, when AudD sends it). `song_length` holds the same timestamp as text, as extension versions before 0.1.0 expect. PubSub messages carry only these fields, to stay under Twitch's 5 KB limit; the history and longpoll have the whole result.
 
@@ -122,4 +124,4 @@ The service uses [Cloudflare's tableflip](https://github.com/cloudflare/tablefli
 
 ## Twitch console settings
 
-The extension fetches from `api.audd.io`, `dashboard.audd.io` and `dashboard-api.audd.io`, and loads images from `lis.tn` and `i3.ytimg.com`. Allowlist them under *Allowlist for URL Fetching Domains* and *Allowlist for Image Domains*. Upload the contents of `frontend/` except `AudD music recognition.json`, which is a Twitch Developer Rig project file.
+The extension fetches from `api.audd.io` and `dashboard.audd.io`, and loads images from `lis.tn` and `i3.ytimg.com`. Allowlist them under *Allowlist for URL Fetching Domains* and *Allowlist for Image Domains*. Upload the contents of `frontend/` except `AudD music recognition.json`, which is a Twitch Developer Rig project file.

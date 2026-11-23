@@ -100,12 +100,25 @@ const shots = [
   ['after_config_loading', config('theme=dark&channel=cfg-slow&account=slow'), CFG, { wait: 800 }],
   ['after_config_not-linked', config('theme=dark&channel=cfg-none&account=none'), CFG],
   ['after_config_light_not-linked', config('theme=light&channel=cfg-none-l&account=none'), CFG],
-  ['after_config_signing-in', config('theme=dark&channel=cfg-signin&account=none'), CFG, { flow: 'signin-wait' }],
+  // Sign in with AudD: the flows click the link and act in the AudD tab it opens
+  ['after_config_sign-in-waiting', config('theme=dark&channel=cfg-signin&account=none'), CFG, { flow: 'signin-wait' }],
+  ['after_config_light_sign-in-waiting', config('theme=light&channel=cfg-signin-l&account=none'), CFG, { flow: 'signin-wait' }],
+  ['after_config_narrow_sign-in-waiting', config('theme=dark&channel=cfg-signin-n&account=none'), { w: 420, h: 1100 }, { flow: 'signin-wait' }],
+  ['after_config_sign-in-tab-audd-stand-in', config('theme=dark&channel=cfg-signin-tab&account=none'), CFG, { flow: 'signin-tab-audd' }],
+  ['after_config_sign-in-tab-link-account-stand-in', config('theme=dark&channel=cfg-signin-tab2&account=none'), CFG, { flow: 'signin-tab-link' }],
+  ['after_config_sign-in-linking', config('theme=dark&channel=cfg-signin-slow&account=slowlink'), CFG, { flow: 'signin-approve', after: 3000 }],
   ['after_config_signed-in-linked', config('theme=dark&channel=cfg-signin2&account=none'), CFG, { flow: 'signin-approve' }],
-  ['after_config_sign-in-declined', config('theme=dark&channel=cfg-signin3&account=none'), CFG, { flow: 'signin-deny' }],
-  ['after_config_sign-in-permission-unticked', config('theme=dark&channel=cfg-signin4&account=none'), CFG, { flow: 'signin-untick' }],
-  ['after_config_sign-in-unavailable', config('theme=dark&channel=cfg-unreg&account=none&signin=unregistered'), CFG, { flow: 'signin-click' }],
-  ['after_config_sign-in-old-backend', config('theme=dark&channel=cfg-nobackend&account=none&signin=nobackend'), CFG, { flow: 'signin-approve' }],
+  ['after_config_sign-in-declined', config('theme=dark&channel=cfg-signin3&account=none'), CFG, { flow: 'signin-decline' }],
+  ['after_config_light_sign-in-declined', config('theme=light&channel=cfg-signin3-l&account=none'), CFG, { flow: 'signin-decline' }],
+  ['after_config_sign-in-failed-expired', config('theme=dark&channel=cfg-signin4&account=none'), CFG, { flow: 'signin-sign_in_expired' }],
+  ['after_config_sign-in-failed-permission-missing', config('theme=dark&channel=cfg-signin5&account=none'), CFG, { flow: 'signin-token_permission_missing' }],
+  ['after_config_sign-in-failed-account-service', config('theme=dark&channel=cfg-signin6&account=none'), CFG, { flow: 'signin-account_service_unavailable' }],
+  ['after_config_sign-in-timed-out', config('theme=dark&channel=cfg-signin7&account=none'), CFG, { flow: 'signin-timeout', clock: true }],
+  ['after_config_sign-in-unavailable', config('theme=dark&channel=cfg-nobackend&account=none&signin=nobackend'), CFG],
+  ['after_config_sign-in-unavailable-backend-down', config('theme=dark&channel=cfg-down-signin&account=none&signin=down'), CFG],
+  ['after_config_sign-in-unavailable-too-many', config('theme=dark&channel=cfg-busy&account=none&signin=busy'), CFG],
+  ['after_config_sign-in-unavailable-after-click', config('theme=dark&channel=cfg-noresult&account=none&signin=noresult'), CFG, { flow: 'signin-close', after: 8000 }],
+  ['after_config_sign-in-not-broadcaster', config('theme=dark&channel=cfg-moderator&account=none&role=moderator'), CFG],
   ['after_config_paste-token', config('theme=dark&channel=cfg-paste&account=none'), CFG, { flow: 'paste-open' }],
   ['after_config_paste-token-wrong', config('theme=dark&channel=cfg-paste2&account=none'), CFG, { flow: 'paste-wrong' }],
   ['after_config_create-account-unpaid', config('theme=dark&channel=cfg-signup&account=none'), CFG, { flow: 'signup' }],
@@ -139,6 +152,7 @@ for (const [name, url, size, opt = {}] of shots) {
     colorScheme: 'dark',
   });
   const page = await context.newPage();
+  if (opt.clock) await page.clock.install();
   const log = [];
   page.on('request', (req) => {
     const u = new URL(req.url());
@@ -162,8 +176,8 @@ for (const [name, url, size, opt = {}] of shots) {
   if (opt.bodyBg) await page.addStyleTag({ content: `html,body{background:${opt.bodyBg} !important}` });
   await page.waitForTimeout(opt.wait || 1400);
 
-  const frame = page; // config flows run on the page itself
-  if (opt.flow) await runFlow(context, frame, opt.flow);
+  // A flow may hand back another page to take instead (the AudD tab).
+  const shot = (opt.flow && await runFlow(context, page, opt)) || page;
   if (opt.scroll) {
     await page.$eval(opt.scroll, (el) => { el.scrollTop = el.scrollHeight; });
     await page.waitForTimeout(200);
@@ -172,31 +186,40 @@ for (const [name, url, size, opt = {}] of shots) {
     for (let i = 0; i < opt.focus; i++) await page.keyboard.press('Tab');
     await page.waitForTimeout(200);
   }
-  await page.screenshot({ path: path.join(OUT, name + '.png') });
+  await shot.screenshot({ path: path.join(OUT, name + '.png') });
   count++;
   // The old frontend has its own known errors; report only the new one's.
   if (log.length && !name.startsWith('before_')) problems.push(`${name}:\n  ${log.join('\n  ')}`);
   await context.close();
 }
 
-async function runFlow(context, page, flow) {
-  const signIn = () => page.getByRole('button', { name: 'Sign in with AudD' }).click();
-  if (flow === 'signin-click') {
-    await signIn();
-    await page.waitForTimeout(800);
-  }
-  if (flow.startsWith('signin-') && flow !== 'signin-click') {
-    await signIn();
-    const link = page.getByRole('link', { name: /Open the AudD sign-in page/ });
-    await link.waitFor();
-    if (flow === 'signin-wait') return;
-    const href = await link.getAttribute('href');
-    const approve = await context.newPage();
-    await approve.goto(href);
-    if (flow === 'signin-untick') await approve.getByLabel('Read your API token').uncheck();
-    await approve.getByRole('button', { name: flow === 'signin-deny' ? 'Deny' : 'Approve' }).click();
-    await approve.close();
-    await page.waitForTimeout(4500);
+async function runFlow(context, page, opt) {
+  const flow = opt.flow;
+  if (flow.startsWith('signin-')) {
+    // signin-<wait|close|timeout|approve|decline|error code|tab-audd|tab-link>
+    const step = flow.slice('signin-'.length);
+    const [tab] = await Promise.all([
+      context.waitForEvent('page'),
+      page.getByRole('link', { name: 'Sign in with AudD' }).click(),
+    ]);
+    await tab.waitForLoadState();
+    if (step === 'tab-audd') return tab;
+    if (step === 'approve' || step === 'tab-link') {
+      await tab.getByRole('button', { name: 'Approve' }).click();
+      await tab.waitForLoadState();
+      if (step === 'tab-link') return tab;
+      await tab.getByRole('button', { name: 'Link account' }).click();
+    } else if (step === 'decline') {
+      await tab.getByRole('button', { name: 'Decline' }).click();
+    } else if (['sign_in_expired', 'token_permission_missing', 'account_service_unavailable'].includes(step)) {
+      await tab.getByRole('button', { name: step }).click();
+    }
+    await tab.waitForLoadState();
+    await tab.close();
+    await page.bringToFront();
+    // The page gives up 10 minutes after the click.
+    if (step === 'timeout') await page.clock.fastForward('10:30');
+    await page.waitForTimeout(opt.after || 3500);
   }
   if (flow === 'paste-open' || flow === 'paste-wrong') {
     await page.getByRole('button', { name: 'Paste it instead' }).click();

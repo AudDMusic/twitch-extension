@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -13,8 +15,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/AudDMusic/twitch-extension/backend/signin"
 )
 
 // devSecret signs the stand-in Twitch JWTs. It is a development value only.
@@ -78,10 +78,8 @@ type account struct {
 type harness struct {
 	mu       sync.Mutex
 	channels map[string]*channelState
-	accounts map[string]*account // by channel
-	devices  map[string]*device  // by device code
-	codes    map[string]string   // user code -> device code
-	tokens   map[string]*grant   // access token -> grant
+	accounts map[string]*account       // by channel
+	sessions map[string]*signInSession // Sign in with AudD, by session
 	flaky    map[string]int
 }
 
@@ -89,9 +87,7 @@ func newHarness() *harness {
 	h := &harness{
 		channels: map[string]*channelState{},
 		accounts: map[string]*account{},
-		devices:  map[string]*device{},
-		codes:    map[string]string{},
-		tokens:   map[string]*grant{},
+		sessions: map[string]*signInSession{},
 		flaky:    map[string]int{},
 	}
 	return h
@@ -104,20 +100,16 @@ func (h *harness) routes(mux *http.ServeMux) {
 		h.mu.Lock()
 		h.channels = map[string]*channelState{}
 		h.accounts = map[string]*account{}
+		h.sessions = map[string]*signInSession{}
 		h.mu.Unlock()
 		w.WriteHeader(http.StatusNoContent)
 	})
-	mux.HandleFunc("/mock/lastSong/getChannelById/", h.getChannel)
-	mux.HandleFunc("/mock/lastSong-old/getChannelById/", h.getChannel)
-	mux.HandleFunc("/mock/lastSong-nomcp/getChannelById/", h.getChannel)
+	// The backend, and variants of it for the signin= parameter (see signin.go).
+	for _, base := range []string{"/mock/lastSong/", "/mock/lastSong-old/", "/mock/lastSong-down/", "/mock/lastSong-busy/", "/mock/lastSong-noresult/"} {
+		mux.HandleFunc(base+"getChannelById/", h.getChannel)
+	}
 	mux.HandleFunc("/mock/lastSong/longpoll/", h.longpoll)
-	// The real sign-in handler, with the fake MCP server behind it.
-	mux.HandleFunc("/mock/lastSong/auddApiToken/", func(w http.ResponseWriter, r *http.Request) {
-		signin.Handler(signin.Config{ExtensionSecret: devSecret, MCPURL: "http://" + r.Host + "/mock/mcp", ClientVersion: "preview"})(w, r)
-	})
-	mux.HandleFunc("/mock/lastSong-nomcp/auddApiToken/", func(w http.ResponseWriter, r *http.Request) {
-		signin.Handler(signin.Config{ExtensionSecret: devSecret, MCPURL: "http://127.0.0.1:1/unreachable", ClientVersion: "preview"})(w, r)
-	})
+	h.signInRoutes(mux)
 	mux.HandleFunc("/mock/twitch.php", h.twitchPhp)
 	mux.HandleFunc("/mock/payments/", h.payments)
 	mux.HandleFunc("/mock/dashboard/", func(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +117,6 @@ func (h *harness) routes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("/mock/lis.tn/", h.songPage)
 	mux.HandleFunc("/mock/ytimg/", h.ytThumb)
-	h.oauthRoutes(mux)
 }
 
 // ------------------------------------------------------------ songs
@@ -378,6 +369,12 @@ func (h *harness) longpoll(w http.ResponseWriter, r *http.Request) {
 
 func b64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 
+func hmacSHA256(key, msg []byte) []byte {
+	m := hmac.New(sha256.New, key)
+	m.Write(msg)
+	return m.Sum(nil)
+}
+
 func (h *harness) jwt(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	channel := q.Get("channel")
@@ -494,6 +491,13 @@ func (h *harness) twitchPhp(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(6 * time.Second)
 		initial = "active"
 	}
+	action := r.URL.RawQuery
+	if initial == "slowlink" { // not linked yet, and linking takes 8 s
+		initial = "none"
+		if strings.HasPrefix(action, "save_user") {
+			time.Sleep(8 * time.Second)
+		}
+	}
 	time.Sleep(300 * time.Millisecond)
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -502,7 +506,6 @@ func (h *harness) twitchPhp(w http.ResponseWriter, r *http.Request) {
 		a = &account{State: initial, ChannelID: channel, UserID: strconv.Itoa(1000 + len(h.accounts))}
 		h.accounts[channel] = a
 	}
-	action := r.URL.RawQuery
 	switch {
 	case strings.HasPrefix(action, "get_user"):
 		writeJSON(w, 200, a.answer(channel))

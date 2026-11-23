@@ -136,9 +136,16 @@ button {
   background: var(--bg-press);
 }
 
-.button[disabled] {
+.button[disabled],
+.button[aria-disabled="true"] {
   opacity: 0.55;
   cursor: default;
+}
+
+/* Inert for a moment (a link that is being prepared): looks ready. */
+.button--waiting[aria-disabled="true"] {
+  opacity: 1;
+  cursor: progress;
 }
 
 .button--primary {
@@ -149,7 +156,11 @@ button {
 
 .button--primary:hover {
   background: var(--brand-hover);
-  border-color: var(--brand-hover);
+}
+
+.button--primary[disabled]:hover,
+.button--primary[aria-disabled="true"]:hover {
+  background: var(--brand);
 }
 
 .button--small {

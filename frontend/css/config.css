@@ -241,7 +241,7 @@ body {
   margin: 0;
 }
 
-/* Sign in with AudD (device flow) */
+/* Sign in with AudD: waiting while the streamer finishes in the AudD tab */
 .signin {
   margin-top: 4px;
   padding: 14px 16px;
@@ -250,15 +250,25 @@ body {
   background: var(--bg-raised);
 }
 
+.signin__lead {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.signin__lead:focus {
+  outline: none;
+}
+
 .signin__steps {
-  margin: 0;
+  margin: 0 0 10px;
   padding-left: 20px;
   color: var(--text-2);
 }
 
 .signin__steps > li {
   padding-left: 4px;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 
 .signin__steps > li::marker {
@@ -266,29 +276,19 @@ body {
   font-weight: 700;
 }
 
-.signin__steps .button {
-  margin-top: 8px;
+.signin__text {
+  margin: 0 0 6px;
+  color: var(--text-2);
 }
 
-.code {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-}
-
-.code__value {
-  padding: 6px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  background: var(--bg);
+.signin__text a {
   color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  user-select: all;
+  font-weight: 600;
+  text-underline-offset: 2px;
+}
+
+.signin__text a .icon {
+  margin-left: 4px;
 }
 
 .signin__wait {
@@ -297,6 +297,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
   color: var(--text-2);

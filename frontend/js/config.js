@@ -9,11 +9,10 @@
   var icon = AudD.icon;
   var ext = window.Twitch && window.Twitch.ext;
 
-  var DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
   var PRICE = '$45';
 
   // What went wrong, why, and what to do. Keys are the error codes of
-  // twitch.php, the AudD sign-in service, and /lastSong/auddApiToken/.
+  // twitch.php, of the backend's sign-in (/lastSong/signIn/), and this page's.
   var MESSAGES = {
     network: 'Can’t reach AudD. Check your connection, then try again.',
     internal_error: 'Something went wrong on AudD’s side. Try again in a minute; if it keeps happening, email hello@audd.io.',
@@ -23,10 +22,8 @@
     no_token: 'Paste your API token first.',
     wrong_token: 'No AudD account has this API token. Copy it again from dashboard.audd.io; if it still doesn’t work, email hello@audd.io.',
     signin_unavailable: 'Signing in with AudD isn’t available right now. Paste your API token instead: it’s on dashboard.audd.io.',
-    rate_limited: 'Too many sign-in attempts from your network. Wait a few minutes, then try again.',
-    access_denied: 'The sign-in was declined on the AudD page. Start again when you’re ready.',
-    expired_token: 'The code expired before it was approved. Start again to get a new code.',
-    invalid_grant: 'That sign-in code is no longer valid. Start again to get a new code.',
+    signin_declined: 'The sign-in was declined on the AudD page. Sign in again when you’re ready.',
+    signin_timeout: 'The sign-in wasn’t finished within 10 minutes, so it stopped. Sign in again when you’re ready.',
     token_permission_missing: 'AudD didn’t share your API token because that permission was unticked. Sign in again and leave it ticked.',
     sign_in_expired: 'The AudD sign-in expired before your account was linked. Sign in again.',
     account_service_unavailable: 'AudD’s account service didn’t respond. Try again in a minute, or paste your API token instead.'
@@ -44,7 +41,8 @@
     connect: 'choose',       // choose | token | signin
     busy: null,              // signup | token
     error: null,             // {code, where: 'account' | 'token' | 'recognition'}
-    signin: null,            // device flow, see startSignIn
+    session: { ready: null, starting: false, failed: null, failedAt: 0 }, // the next sign-in, see prepareSession
+    signin: null,            // a sign-in in progress, see signInOpened
     awaitingPayment: false,
     justPaid: false,
     widget: { history: false, background: false, dark: false }
@@ -145,7 +143,7 @@
       box.appendChild(el('p', { class: 'ok-line' }, [icon('check'), 'Your AudD account is connected to this channel.']));
       box.appendChild(el('p', {}, [el('button', {
         class: 'link-button', type: 'button',
-        on: { click: function () { stopAwaitingPayment(); model.account = 'none'; model.switching = true; model.connect = 'choose'; model.error = null; render(); } }
+        on: { click: function () { stopAwaitingPayment(); model.account = 'none'; model.switching = true; model.connect = 'choose'; model.error = null; retrySession(); render(); } }
       }, 'Connect a different AudD account')]));
       return;
     }
@@ -161,10 +159,15 @@
 
     box.appendChild(el('p', { text: 'AudD recognizes the songs. Sign in to link your AudD account to this channel.' }));
     var busy = !!model.busy;
-    box.appendChild(el('div', { class: 'actions' }, [
-      el('button', { class: 'button button--primary button--signin', type: 'button', disabled: busy, on: { click: startSignIn } }, 'Sign in with AudD')
-    ]));
-    if (model.error && model.error.where === 'account') box.appendChild(alertBox(model.error.code));
+    var signInLink = el('a', {
+      class: 'button button--primary button--signin', id: 'signin-link', target: '_blank', rel: 'noopener',
+      on: { click: signInOpened, auxclick: signInOpened }
+    }, ['Sign in with AudD', icon('open')]);
+    updateSignInLink(signInLink);
+    box.appendChild(el('div', { class: 'actions' }, [signInLink]));
+    var errorCode = model.error && model.error.where === 'account' ? model.error.code : null;
+    if (errorCode) box.appendChild(alertBox(errorCode));
+    if (model.session.failed && model.session.failed !== errorCode) box.appendChild(alertBox(model.session.failed));
     if (model.switching) {
       box.appendChild(el('p', {}, [el('button', {
         class: 'link-button', type: 'button', disabled: busy,
@@ -180,6 +183,8 @@
         on: { click: function () { model.connect = 'token'; model.error = null; render(); focusLater('#api-token'); } }
       }, 'Paste it instead')])
     ]));
+    // The link needs a started session: start one now if there is none.
+    prepareSession();
   }
 
   function tokenForm() {
@@ -211,7 +216,7 @@
           : el('button', { class: 'button button--primary', type: 'submit' }, 'Connect'),
         el('button', {
           class: 'button', type: 'button', disabled: model.busy === 'token',
-          on: { click: function () { model.connect = 'choose'; model.error = null; render(); } }
+          on: { click: function () { model.connect = 'choose'; model.error = null; retrySession(); render(); } }
         }, [icon('back'), 'Back'])
       ])
     ]);
@@ -225,47 +230,26 @@
   function signinPanel() {
     var s = model.signin;
     var panel = el('div', { class: 'signin' });
-    if (s.phase === 'starting') {
-      panel.appendChild(el('p', { class: 'status-line' }, [AudD.spinner(), 'Getting a sign-in code…']));
-      return panel;
-    }
     if (s.phase === 'linking') {
       panel.appendChild(el('p', { class: 'status-line' }, [AudD.spinner(), 'Approved. Linking your AudD account to this channel…']));
       return panel;
     }
-    var open = s.uriComplete || s.uri;
-    var openLabel = 'Open the AudD sign-in page';
+    panel.appendChild(el('p', { class: 'signin__lead', id: 'signin-lead', tabindex: '-1', text: 'Finish in the AudD tab that opened:' }));
     panel.appendChild(el('ol', { class: 'signin__steps' }, [
-      el('li', {}, [
-        'Sign in to AudD in a new tab.',
-        el('div', {}, [el('a', { class: 'button button--primary', href: open, target: '_blank', rel: 'noopener noreferrer' }, [openLabel, icon('open')])])
-      ]),
-      el('li', {}, [
-        s.uriComplete ? 'Check that the page shows this code, then approve:' : 'Enter this code there, then approve:',
-        el('div', { class: 'code' }, [
-          el('span', { class: 'code__value' }, [el('span', { class: 'visually-hidden', text: 'Code: ' }), s.userCode]),
-          copyButton(function () { return s.userCode; }, 'Copy code')
-        ])
-      ])
+      el('li', { text: 'Sign in to AudD if it asks, then approve.' }),
+      el('li', {}, ['Check that the channel is yours, then click ', el('strong', { text: 'Link account' }), '.'])
     ]));
-    var expires = el('span', { class: 'signin__expiry' });
-    updateExpiry(expires);
+    panel.appendChild(el('p', { class: 'signin__text', text: 'This page continues on its own after that.' }));
+    panel.appendChild(el('p', { class: 'signin__text' }, [
+      'Don’t see the AudD tab? ',
+      el('a', { href: signInUrl(s.session), target: '_blank', rel: 'noopener' }, ['Open the AudD page again', icon('open')])
+    ]));
     panel.appendChild(el('div', { class: 'signin__wait' }, [
-      el('span', { class: 'status-line', role: 'status' }, [AudD.spinner(), el('span', {}, ['Waiting for you to approve. ', expires])]),
+      el('span', { class: 'status-line', role: 'status' }, [AudD.spinner(), 'Waiting for you to link your account…']),
       el('button', { class: 'button button--small', type: 'button', on: { click: cancelSignIn } }, 'Cancel')
     ]));
     return panel;
   }
-
-  function updateExpiry(node) {
-    if (!model.signin || !model.signin.expiresAt) return;
-    var min = Math.max(1, Math.ceil((model.signin.expiresAt - Date.now()) / 60000));
-    node.textContent = 'The code works for ' + min + (min === 1 ? ' more minute.' : ' more minutes.');
-  }
-  setInterval(function () {
-    var node = nodes.account.querySelector('.signin__expiry');
-    if (node) updateExpiry(node);
-  }, 15000);
 
   function renderRecognition() {
     var box = nodes.recognition;
@@ -374,20 +358,6 @@
     button.textContent = '';
     button.appendChild(icon(done ? 'check' : 'copy'));
     button.appendChild(document.createTextNode(label));
-  }
-
-  function copyButton(getText, label) {
-    var button = el('button', { class: 'button button--small', type: 'button' });
-    setCopyLabel(button, label, false);
-    button.addEventListener('click', function () {
-      copyText(getText()).then(function () {
-        setCopyLabel(button, 'Copied', true);
-        setTimeout(function () { setCopyLabel(button, label, false); }, 2000);
-      }).catch(function () {
-        setCopyLabel(button, 'Select and copy it', false);
-      });
-    });
-    return button;
   }
 
   setCopyLabel(nodes.widgetCopy, 'Copy', false);
@@ -515,9 +485,9 @@
         return;
       }
       applyAccount(res, 'account');
-      if (model.account !== 'connected' && source === 'signin') {
-        model.connect = 'choose';
+      if (source === 'signin') {
         model.signin = null;
+        if (model.account !== 'connected') model.connect = 'choose';
       }
       render();
     }).catch(function () {
@@ -558,124 +528,213 @@
   });
 
   // ---------------------------------------------------- Sign in with AudD
-  // OAuth 2.0 device authorization grant (RFC 8628) against AudD's
-  // authorization server, which answers this page's origin. The access token
-  // only goes to the extension backend, which reads the API token from the
-  // AudD MCP server; both tokens are revoked once the account is linked.
+  // The extension backend runs the sign-in. The page makes a random secret
+  // and registers its SHA-256, the session, with signIn/start/. "Sign in with
+  // AudD" is then a plain link to signIn/open/?session=..., ready before the
+  // click so that no popup blocker stops it. The backend sends that tab to
+  // AudD's approval page, then asks the streamer to confirm the channel.
+  // Meanwhile the page asks signIn/result/ with the secret, which only it
+  // knows, and links the API token it gets the same way as a pasted one.
+  // Each session is used once.
 
+  var POLL_EVERY = 2000;
+  var SIGNIN_LIMIT = 10 * 60000;   // how long a sign-in may take after the click
+  var SESSION_TTL = 10 * 60000;    // how long a started session lasts
+  var SESSION_RENEW = 9 * 60000;   // an unused session is replaced before it runs out
+  var RETRY_AFTER = 30000;         // a failed start is tried again on return, no sooner than this
+  var MAX_FAILURES = 3;            // the result unreachable this many times in a row: unavailable
+  var sessionRun = 0;
   var signinRun = 0;
+  var pollTimer = null;
 
-  function oauthCode(r) {
-    var code = r.data && typeof r.data.error === 'string' ? r.data.error : '';
-    if (r.status === 429) return 'rate_limited';
-    if (code === 'invalid_client' || code === 'unauthorized_client' || code === 'invalid_scope' || r.status === 404) return 'signin_unavailable';
-    return code || 'internal_error';
+  function hex(bytes) {
+    var out = '';
+    for (var i = 0; i < bytes.length; i++) out += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16);
+    return out;
   }
 
-  function startSignIn() {
+  // A secret (32 random bytes as hex) and its SHA-256 (hex), the session.
+  function makeSession() {
+    return Promise.resolve().then(function () {
+      var bytes = new Uint8Array(32);
+      window.crypto.getRandomValues(bytes);
+      var secret = hex(bytes);
+      return window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)).then(function (hash) {
+        return { secret: secret, session: hex(new Uint8Array(hash)) };
+      });
+    });
+  }
+
+  function signInUrl(session) {
+    return E.lastSong + 'signIn/open/?session=' + session;
+  }
+
+  function showingSignInLink() {
+    return !!document.getElementById('signin-link');
+  }
+
+  // Gives the "Sign in with AudD" link a started session with time left.
+  // After a failed start it does nothing unless retry is set; the message
+  // about the failure stays up until a retry succeeds.
+  function prepareSession(retry) {
+    var s = model.session;
+    if (s.starting || !auth || (s.failed && !retry)) return;
+    var age = s.ready ? Date.now() - s.ready.startedAt : Infinity;
+    if (age < SESSION_RENEW) return;
+    if (s.ready && age >= SESSION_TTL) {
+      s.ready = null;
+      updateSignInLink();
+    }
+    s.starting = true;
+    var run = ++sessionRun;
+    var startedAt = Date.now();
+    var made = null;
+    makeSession().then(function (m) {
+      made = m;
+      return AudD.request(E.lastSong + 'signIn/start/', { form: { jwt: auth.token, session: m.session } });
+    }).then(function (r) {
+      if (run !== sessionRun) return;
+      s.starting = false;
+      if (r.status === 200 && r.data && typeof r.data === 'object') { // {"status": "pending"}
+        var wasFailed = !!s.failed;
+        made.startedAt = startedAt;
+        s.ready = made;
+        s.failed = null;
+        if (wasFailed && showingSignInLink()) renderAccount();
+        else updateSignInLink();
+        return;
+      }
+      var code = r.data && typeof r.data.error === 'string' ? r.data.error : '';
+      // 404: a backend without the sign-in; 429: too many sign-ins for now.
+      sessionFailed(r.status === 404 || r.status === 429 || r.status >= 500 || !code ? 'signin_unavailable' : code);
+    }).catch(function () {
+      if (run !== sessionRun) return;
+      s.starting = false;
+      sessionFailed('signin_unavailable');
+    });
+  }
+
+  function sessionFailed(code) {
+    var s = model.session;
+    var changed = s.failed !== code;
+    s.ready = null;
+    s.failed = code;
+    s.failedAt = Date.now();
+    if (showingSignInLink()) {
+      if (changed) renderAccount();
+      else updateSignInLink();
+    }
+  }
+
+  // The streamer chose to see the sign-in again (Back, another account).
+  function retrySession() {
+    if (model.session.failed) prepareSession(true);
+  }
+
+  // Points the link at the ready session, or makes it inert: it looks the
+  // same while a session starts (a short wait), and dimmed while signing in
+  // can't start.
+  function updateSignInLink(a) {
+    a = a || document.getElementById('signin-link');
+    if (!a) return;
+    var s = model.session;
+    if (s.ready && !model.busy) {
+      a.setAttribute('href', signInUrl(s.ready.session));
+      a.removeAttribute('role');
+      a.removeAttribute('aria-disabled');
+      a.classList.remove('button--waiting');
+    } else {
+      a.removeAttribute('href');
+      a.setAttribute('role', 'link');
+      a.setAttribute('aria-disabled', 'true');
+      a.classList.toggle('button--waiting', !model.busy && !s.failed);
+    }
+  }
+
+  // The streamer opened the link: wait for the result.
+  function signInOpened(e) {
+    if (e.type === 'auxclick' && e.button !== 1) return;
+    var ready = model.session.ready;
+    if (!ready || model.busy || model.connect !== 'choose') return;
+    model.session.ready = null; // used once
     var run = ++signinRun;
     model.connect = 'signin';
     model.error = null;
-    model.signin = { phase: 'starting' };
-    render();
-    AudD.request(E.oauthDevice, {
-      form: { client_id: E.oauthClientId, scope: E.oauthScope, resource: E.oauthResource }
-    }).then(function (r) {
+    model.signin = {
+      phase: 'waiting', session: ready.session, secret: ready.secret,
+      until: Date.now() + SIGNIN_LIMIT, failures: 0, polling: false
+    };
+    // Redraw once the browser has followed the link: a link taken out of the
+    // page during its own click doesn't open.
+    setTimeout(function () {
       if (run !== signinRun) return;
-      var d = r.data || {};
-      var uri = AudD.httpUrl(d.verification_uri);
-      var uriComplete = AudD.httpUrl(d.verification_uri_complete);
-      if (r.status !== 200 || !d.device_code || !d.user_code || !(uri || uriComplete)) {
-        signInFailed(r.status === 200 ? 'internal_error' : oauthCode(r));
-        return;
-      }
-      model.signin = {
-        phase: 'waiting',
-        deviceCode: String(d.device_code),
-        userCode: AudD.str(d.user_code),
-        uri: uri,
-        uriComplete: uriComplete,
-        expiresAt: Date.now() + (AudD.num(d.expires_in) || 900) * 1000,
-        interval: Math.max(AudD.num(d.interval) || 5, 2)
-      };
       render();
-      announce('Sign-in code ready: ' + model.signin.userCode.split('').join(' ') + '. Open the AudD sign-in page to approve it.');
-      pollLater(run);
-    }).catch(function () {
-      if (run === signinRun) signInFailed('network');
-    });
+      focusLater('#signin-lead');
+      announce('Finish in the AudD tab: approve the sign-in, then click Link account. This page continues on its own.');
+    }, 0);
+    pollLater(run);
   }
 
   function pollLater(run) {
-    setTimeout(function () { pollToken(run); }, model.signin.interval * 1000);
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(function () { pollResult(run); }, POLL_EVERY);
   }
 
-  function pollToken(run) {
+  function pollResult(run) {
     var s = model.signin;
-    if (run !== signinRun || !s || s.phase !== 'waiting') return;
-    if (Date.now() > s.expiresAt + 60000) { signInFailed('expired_token'); return; }
-    AudD.request(E.oauthToken, {
-      form: { grant_type: DEVICE_GRANT, device_code: s.deviceCode, client_id: E.oauthClientId }
-    }).then(function (r) {
-      var d = r.data || {};
-      if (run !== signinRun) {
-        // Cancelled while this request was on its way: don't keep the access.
-        if (d.access_token) { revoke(String(d.access_token), 'access_token'); revoke(d.refresh_token ? String(d.refresh_token) : null, 'refresh_token'); }
-        return;
-      }
-      if (r.status === 200 && d.access_token) {
-        link(run, String(d.access_token), d.refresh_token ? String(d.refresh_token) : null, typeof d.scope === 'string' ? d.scope : null);
-        return;
-      }
-      var code = oauthCode(r);
-      if (code === 'authorization_pending') { pollLater(run); return; }
-      if (code === 'slow_down' || r.status === 429 || r.status >= 500 || !r.data) {
-        // Asked to poll less often, or the server failed: wait longer.
-        var asked = AudD.num(d.interval);
-        s.interval = asked && asked > s.interval ? asked : s.interval + 5;
-        pollLater(run);
-        return;
-      }
-      signInFailed(code);
-    }).catch(function () {
-      // The connection failed: poll half as often (RFC 8628 section 3.5)
-      // and keep trying until the code expires.
+    if (run !== signinRun || !s || s.phase !== 'waiting' || s.polling) return;
+    if (Date.now() > s.until) {
+      signInFailed('signin_timeout');
+      return;
+    }
+    s.polling = true;
+    AudD.request(E.lastSong + 'signIn/result/', { form: { jwt: auth.token, secret: s.secret } }).then(function (r) {
+      s.polling = false;
       if (run !== signinRun) return;
-      s.interval = Math.min(s.interval * 2, 60);
-      pollLater(run);
+      var d = r.data && typeof r.data === 'object' ? r.data : null;
+      var error = d && typeof d.error === 'string' && d.error ? d.error : '';
+      if (r.status === 200 && d) {
+        if (d.status === 'done') {
+          if (typeof d.api_token === 'string' && d.api_token) linkAccount(d.api_token);
+          else signInFailed('internal_error');
+        } else if (d.status === 'declined') {
+          signInFailed('signin_declined');
+        } else if (d.status === 'failed') {
+          signInFailed(error || 'internal_error');
+        } else {
+          // "unknown" (the AudD tab hasn't reached the backend yet) or "pending"
+          s.failures = 0;
+          pollLater(run);
+        }
+        return;
+      }
+      // 404: a backend without the sign-in.
+      if (r.status === 404) signInFailed('signin_unavailable');
+      else if (r.status >= 500 || !error) pollFailed(run);
+      else signInFailed(error); // bad_request, wrong_jwt, not_broadcaster
+    }).catch(function () {
+      s.polling = false;
+      if (run === signinRun) pollFailed(run);
     });
   }
 
-  function link(run, accessToken, refreshToken, scope) {
-    model.signin.phase = 'linking';
-    render();
-    var done = function () { revoke(refreshToken, 'refresh_token'); revoke(accessToken, 'access_token'); };
-    if (scope && scope.split(/\s+/).indexOf(E.oauthScope) < 0) {
-      done();
-      signInFailed('token_permission_missing');
-      return;
-    }
-    AudD.request(E.lastSong + 'auddApiToken/', { form: { jwt: auth.token, access_token: accessToken }, timeout: 30000 }).then(function (r) {
-      if (run !== signinRun) return;
-      var d = r.data || {};
-      if (r.status === 200 && typeof d.api_token === 'string' && d.api_token) {
-        return saveToken(d.api_token, 'signin');
-      }
-      // A backend without this endpoint answers 404.
-      signInFailed(r.status === 404 ? 'signin_unavailable' : (typeof d.error === 'string' && d.error) || 'internal_error');
-    }).catch(function () {
-      if (run === signinRun) signInFailed('network');
-    }).finally(done);
+  // The backend didn't answer: a few times in a row means it can't now.
+  function pollFailed(run) {
+    if (++model.signin.failures >= MAX_FAILURES) signInFailed('signin_unavailable');
+    else pollLater(run);
   }
 
-  // Ends the extension's access to the AudD account; failures don't matter.
-  function revoke(token, hint) {
-    if (!token) return;
-    AudD.request(E.oauthRevoke, { form: { token: token, token_type_hint: hint, client_id: E.oauthClientId } }).catch(function () {});
+  function linkAccount(apiToken) {
+    signinRun++;
+    clearTimeout(pollTimer);
+    model.signin = { phase: 'linking' };
+    render();
+    saveToken(apiToken, 'signin');
   }
 
   function signInFailed(code) {
     signinRun++;
+    clearTimeout(pollTimer);
     model.signin = null;
     model.connect = code === 'signin_unavailable' ? 'token' : 'choose';
     model.error = { code: code, where: 'account' };
@@ -684,11 +743,25 @@
 
   function cancelSignIn() {
     signinRun++;
+    clearTimeout(pollTimer);
     model.signin = null;
     model.connect = 'choose';
     model.error = null;
     render();
   }
+
+  // Coming back from the AudD tab: ask for the result at once. On the first
+  // step, renew a link that is running out and retry a failed start.
+  function onReturn() {
+    var s = model.signin;
+    if (s && s.phase === 'waiting' && !s.polling) pollResult(signinRun);
+    if (showingSignInLink()) prepareSession(!!model.session.failed && Date.now() - model.session.failedAt >= RETRY_AFTER);
+  }
+  window.addEventListener('focus', onReturn);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') onReturn();
+  });
+  setInterval(function () { if (showingSignInLink()) prepareSession(); }, 30000);
 
   // ------------------------------------------------------------- start
 

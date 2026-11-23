@@ -74,13 +74,17 @@
     ['none', 'Not linked'], ['active', 'Linked, recognition on'], ['expiring', 'Ends in 3 days'], ['expired', 'Recognition ended'],
     ['unpaid', 'Linked, never turned on'], ['error-internal_error', 'twitch.php error'], ['down', 'dashboard.audd.io unreachable'], ['slow', 'Loading (6 s)']
   ];
-  group('Configuration page (960 wide, shown at 60%)', 'In the Creator Dashboard. Dark by default. Try "Sign in with AudD" in the first one: the approval page is a local mock.', [].concat(
+  group('Configuration page (960 wide, shown at 60%)', 'In the Creator Dashboard. Dark by default. Try "Sign in with AudD" in the first one: the tab it opens is a local stand-in for AudD’s page, where you pick the account and how the sign-in ends.', [].concat(
     accounts.map(function (a) { return t('account=' + a[0], '/ext/config.html?mode=config&theme=dark&channel=cfg-' + a[0] + '&account=' + a[0], 960, 1000, 0.6, a[1], true); }),
     [
       t('account=none, light', '/ext/config.html?mode=config&theme=light&channel=cfg-none-light&account=none', 960, 1000, 0.6),
       t('account=active, light', '/ext/config.html?mode=config&theme=light&channel=cfg-active-light&account=active', 960, 1000, 0.6),
       t('narrow (420)', '/ext/config.html?mode=config&theme=dark&channel=cfg-narrow&account=none', 420, 1200, 0.6, null, true),
-      t('sign-in not registered', '/ext/config.html?mode=config&theme=dark&channel=cfg-unreg&account=none&signin=unregistered', 960, 1000, 0.6, 'Click Sign in: falls back to pasting a token', true)
+      t('account=slowlink', '/ext/config.html?mode=config&theme=dark&channel=cfg-slowlink&account=slowlink', 960, 1000, 0.6, 'Sign in and approve: linking takes 8 s', true),
+      t('signin=nobackend', '/ext/config.html?mode=config&theme=dark&channel=cfg-nobackend&account=none&signin=nobackend', 960, 1000, 0.6, 'Backend without the sign-in (404): sign-in unavailable', true),
+      t('signin=busy', '/ext/config.html?mode=config&theme=dark&channel=cfg-busy&account=none&signin=busy', 960, 1000, 0.6, 'Too many sign-ins (429): sign-in unavailable', true),
+      t('signin=noresult', '/ext/config.html?mode=config&theme=dark&channel=cfg-noresult&account=none&signin=noresult', 960, 1000, 0.6, 'Sign in, then close the tab: the result fails (502), so the page offers to paste a token', true),
+      t('role=moderator', '/ext/config.html?mode=config&theme=dark&channel=cfg-moderator&account=none&role=moderator', 960, 1000, 0.6, 'Not the broadcaster (403)', true)
     ]
   ));
 

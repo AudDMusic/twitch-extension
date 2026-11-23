@@ -4,5 +4,5 @@ h1 { font-size: 22px; margin: 0 0 12px; }
 .mock-tag { display: inline-block; margin: 0 0 10px; padding: 2px 8px; border-radius: 4px; background: #fff3cd; color: #6b4e00; font-size: 12px; font-weight: 700; }
 .mock-code { font: 700 28px/1.2 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .12em; }
 button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid #999; background: #fff; cursor: pointer; }
-button[value="approve"], form > button { background: #d4083b; border-color: #d4083b; color: #fff; }
+button[value="approve"], form > button { background: #d4083b; border-color: transparent; color: #fff; }
 code { background: #eee; padding: 1px 5px; border-radius: 4px; }

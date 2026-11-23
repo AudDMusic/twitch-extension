@@ -1,7 +1,7 @@
 // Command preview serves the extension locally with no Twitch and no AudD
-// account: a stand-in for the Twitch extension helper, a mock of the
-// extension backend, twitch.php, AudD's OAuth device flow and MCP server, and
-// a gallery of every view and state.
+// account: a stand-in for the Twitch extension helper, mocks of the extension
+// backend (with Sign in with AudD) and twitch.php, and a gallery of every view
+// and state.
 //
 //	cd dev && go run ./preview            # http://localhost:8787/
 //	go run ./preview -addr :9000 -before /path/to/old/frontend
@@ -13,11 +13,13 @@
 //	                        recent, stale, one, full, long, nocover, youtube,
 //	                        legacy, empty, empty-prod, down, slow, flaky)
 //	every=<seconds>         push a new song through PubSub this often
-//	role=viewer|broadcaster the role in the Twitch JWT
+//	role=viewer|broadcaster|moderator
+//	                        the role in the Twitch JWT
 //	account=<scenario>      the AudD account twitch.php reports (none, active,
-//	                        expiring, expired, unpaid, error-<code>, down)
-//	signin=unregistered|nobackend|nomcp
-//	                        make "Sign in with AudD" fail at that step
+//	                        expiring, expired, unpaid, error-<code>, down,
+//	                        slow, slowlink)
+//	signin=nobackend|down|busy|noresult
+//	                        make "Sign in with AudD" unavailable (see signin.go)
 //	platform=mobile         the Twitch mobile app
 //	ch=<channel>&history&background&shadow&black-font
 //	                        the hosted widget (panel.html only)
@@ -173,25 +175,16 @@ func devEndpoints(q map[string][]string) string {
 		return ""
 	}
 	lastSong := "/mock/lastSong/"
-	clientID := "audd-twitch"
 	switch get("signin") {
-	case "unregistered":
-		clientID = "not-registered"
 	case "nobackend":
 		lastSong = "/mock/lastSong-old/"
-	case "nomcp":
-		lastSong = "/mock/lastSong-nomcp/"
+	case "down", "busy", "noresult":
+		lastSong = "/mock/lastSong-" + get("signin") + "/"
 	}
 	return fmt.Sprintf(`// Development endpoints served by dev/preview (not the production file).
 window.AUDD_ENDPOINTS = {
   lastSong: %q,
   twitchPhp: '/mock/twitch.php',
-  oauthDevice: '/mock/oauth2/device_authorization',
-  oauthToken: '/mock/oauth2/token',
-  oauthRevoke: '/mock/oauth2/revoke',
-  oauthClientId: %q,
-  oauthScope: 'token:read',
-  oauthResource: 'https://mcp.audd.io',
   payments: location.origin + '/mock/payments/',
   dashboard: location.origin + '/mock/dashboard/',
   site: 'https://audd.io/',
@@ -199,5 +192,5 @@ window.AUDD_ENDPOINTS = {
   songLinkBase: location.origin + '/mock/lis.tn/',
   youtubeThumbBase: location.origin + '/mock/ytimg/'
 };
-`, lastSong, clientID)
+`, lastSong)
 }
