@@ -4,10 +4,16 @@
   var q = new URLSearchParams(location.search);
   var scene = document.getElementById('scene');
   scene.style.backgroundImage = 'url("/dev/static/frame-' + (q.get('bg') || 'busy').replace(/[^a-z]/g, '') + '.svg")';
-  var src = q.get('src') || '';
-  if (!/^\/(ext|before)\//.test(src)) return;
+  // Only this server's own extension pages go in the frame.
+  var target;
+  try {
+    target = new URL(q.get('src') || '', location.origin);
+  } catch (e) {
+    return;
+  }
+  if (target.origin !== location.origin || !/^\/(ext|before)\//.test(target.pathname)) return;
   var f = document.createElement('iframe');
-  f.src = src;
+  f.src = location.origin + target.pathname + target.search;
   f.title = 'extension';
   var w = Number(q.get('w')) || 320;
   var h = Number(q.get('h')) || 160;

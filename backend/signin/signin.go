@@ -107,6 +107,7 @@ type Config struct {
 type session struct {
 	created  time.Time
 	channel  string // the Twitch channel ID that started the sign-in
+	state    string // the OAuth state, made by this server
 	verifier string
 	status   string // StatusPending, StatusDone, StatusDeclined or StatusFailed
 	working  bool   // Callback is exchanging the code
@@ -119,6 +120,7 @@ type Service struct {
 	cfg      Config
 	mu       sync.Mutex
 	sessions map[string]*session
+	states   map[string]string // OAuth state -> session ID
 	now      func() time.Time
 }
 
@@ -139,7 +141,7 @@ func New(cfg Config) *Service {
 	if cfg.MCPURL == "" {
 		cfg.MCPURL = DefaultMCPURL
 	}
-	return &Service{cfg: cfg, sessions: map[string]*session{}, now: time.Now}
+	return &Service{cfg: cfg, sessions: map[string]*session{}, states: map[string]string{}, now: time.Now}
 }
 
 func (s *Service) report(err error) {
@@ -153,8 +155,16 @@ func (s *Service) sweep() {
 	limit := s.now().Add(-sessionTTL)
 	for id, e := range s.sessions {
 		if e.created.Before(limit) {
-			delete(s.sessions, id)
+			s.drop(id)
 		}
+	}
+}
+
+// drop forgets a session. The caller holds s.mu.
+func (s *Service) drop(id string) {
+	if e, exists := s.sessions[id]; exists {
+		delete(s.states, e.state)
+		delete(s.sessions, id)
 	}
 }
 
@@ -244,6 +254,10 @@ func (s *Service) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	verifier, err := randomString(48)
+	var state string
+	if err == nil {
+		state, err = randomString(32)
+	}
 	if err != nil {
 		s.report(err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": ErrServiceUnavailable})
@@ -277,7 +291,7 @@ func (s *Service) Start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if count >= maxChannelSessions {
-		delete(s.sessions, oldestID)
+		s.drop(oldestID)
 	}
 	if len(s.sessions) >= maxSessions {
 		s.mu.Unlock()
@@ -285,7 +299,8 @@ func (s *Service) Start(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": ErrTooManySignIns})
 		return
 	}
-	s.sessions[id] = &session{created: s.now(), channel: channel, verifier: verifier, status: StatusPending}
+	s.sessions[id] = &session{created: s.now(), channel: channel, state: state, verifier: verifier, status: StatusPending}
+	s.states[state] = id
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]string{"status": StatusPending})
 }
@@ -308,7 +323,7 @@ func (s *Service) Open(w http.ResponseWriter, r *http.Request) {
 		writePage(w, http.StatusGone, pageExpired)
 		return
 	}
-	verifier := e.verifier
+	verifier, state := e.verifier, e.state
 	s.mu.Unlock()
 
 	challenge := sha256.Sum256([]byte(verifier))
@@ -317,7 +332,7 @@ func (s *Service) Open(w http.ResponseWriter, r *http.Request) {
 		"client_id":             {s.cfg.ClientID},
 		"redirect_uri":          {s.cfg.RedirectURI},
 		"scope":                 {scope},
-		"state":                 {id},
+		"state":                 {state},
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(challenge[:])},
 		"code_challenge_method": {"S256"},
 		"resource":              {s.cfg.MCPURL},
@@ -349,10 +364,12 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		}
 		q = r.PostForm
 	}
-	id, code := q.Get("state"), q.Get("code")
+	state, code := q.Get("state"), q.Get("code")
 	s.mu.Lock()
 	s.sweep()
+	id, known := s.states[state]
 	e, exists := s.sessions[id]
+	exists = exists && known
 	if !exists || e.status != StatusPending || e.working {
 		s.mu.Unlock()
 		writePage(w, http.StatusGone, pageExpired)
@@ -378,7 +395,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.ChannelName != nil {
 			name = s.cfg.ChannelName(channel)
 		}
-		writeConfirmPage(w, confirmData{Channel: name, ChannelID: channel, State: id, Code: code})
+		writeConfirmPage(w, confirmData{Channel: name, ChannelID: channel, State: state, Code: code})
 		return
 	}
 	if q.Get("decision") != "link" {
@@ -500,12 +517,12 @@ func (s *Service) Result(w http.ResponseWriter, r *http.Request) {
 		switch e.status {
 		case StatusDone:
 			out["api_token"] = e.apiToken
-			delete(s.sessions, id)
+			s.drop(id)
 		case StatusFailed:
 			out["error"] = e.errCode
-			delete(s.sessions, id)
+			s.drop(id)
 		case StatusDeclined:
-			delete(s.sessions, id)
+			s.drop(id)
 		}
 	}
 	s.mu.Unlock()

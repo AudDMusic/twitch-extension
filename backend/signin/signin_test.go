@@ -20,6 +20,7 @@ type fakeAudD struct {
 	t          *testing.T
 	mu         sync.Mutex
 	challenge  string // the code_challenge of the authorization request
+	state      string // its state
 	tokenError string
 	mcpStatus  int
 	revoked    []string
@@ -174,6 +175,7 @@ func (f *fakeAudD) open(t *testing.T, s *Service, session string) url.Values {
 	q := u.Query()
 	f.mu.Lock()
 	f.challenge = q.Get("code_challenge")
+	f.state = q.Get("state")
 	f.mu.Unlock()
 	return q
 }
@@ -216,7 +218,7 @@ func TestSignIn(t *testing.T) {
 	}
 	q := f.open(t, s, session)
 	for k, want := range map[string]string{"response_type": "code", "client_id": "client-1", "scope": "token:read",
-		"redirect_uri": "https://ebs.example/callback/", "state": session, "code_challenge_method": "S256"} {
+		"redirect_uri": "https://ebs.example/callback/", "code_challenge_method": "S256"} {
 		if q.Get(k) != want {
 			t.Errorf("authorization request: %s = %q, want %q", k, q.Get(k), want)
 		}
@@ -231,14 +233,14 @@ func TestSignIn(t *testing.T) {
 
 	// Arriving from AudD only asks to confirm the channel, by name; nothing is
 	// read yet.
-	w := arrive(s, "code=good-code&state="+session)
+	w := arrive(s, "code=good-code&state="+f.state)
 	if !strings.Contains(w.Body.String(), "the Twitch channel some&lt;b&gt;streamer?") {
 		t.Fatalf("confirmation page: %s", w.Body.String())
 	}
 	if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusPending {
 		t.Fatalf("before confirming: %v", out)
 	}
-	w = callback(s, "code=good-code&state="+session)
+	w = callback(s, "code=good-code&state="+f.state)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "account is linked") {
 		t.Fatalf("callback: %d %s", w.Code, w.Body.String())
 	}
@@ -273,7 +275,7 @@ func TestSignIn(t *testing.T) {
 		t.Errorf("second read: %v", out)
 	}
 	// The code can't be replayed and the link is used up.
-	if w := callback(s, "code=good-code&state="+session); w.Code != http.StatusGone {
+	if w := callback(s, "code=good-code&state="+f.state); w.Code != http.StatusGone {
 		t.Errorf("replayed callback: %d", w.Code)
 	}
 }
@@ -284,7 +286,7 @@ func TestDeclined(t *testing.T) {
 		f := newFakeAudD(t)
 		s := f.service()
 		f.open(t, s, session)
-		if w := callback(s, "error=access_denied&state="+session); !strings.Contains(w.Body.String(), "cancelled") {
+		if w := callback(s, "error=access_denied&state="+f.state); !strings.Contains(w.Body.String(), "cancelled") {
 			t.Fatalf("callback: %s", w.Body.String())
 		}
 		if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusDeclined {
@@ -295,7 +297,7 @@ func TestDeclined(t *testing.T) {
 		f := newFakeAudD(t)
 		s := f.service()
 		f.open(t, s, session)
-		w := post(s.Callback, url.Values{"code": {"good-code"}, "state": {session}, "decision": {"cancel"}})
+		w := post(s.Callback, url.Values{"code": {"good-code"}, "state": {f.state}, "decision": {"cancel"}})
 		if !strings.Contains(w.Body.String(), "cancelled") {
 			t.Fatalf("callback: %s", w.Body.String())
 		}
@@ -372,7 +374,7 @@ func TestFailures(t *testing.T) {
 			s := f.service()
 			session := sessionOf(testSecret)
 			f.open(t, s, session)
-			if w := callback(s, "code="+tc.code+"&state="+session); !strings.Contains(w.Body.String(), "didn&#39;t work") {
+			if w := callback(s, "code="+tc.code+"&state="+f.state); !strings.Contains(w.Body.String(), "didn&#39;t work") {
 				t.Fatalf("callback: %s", w.Body.String())
 			}
 			if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusFailed || out["error"] != tc.want {
@@ -390,7 +392,7 @@ func TestExpiryAndBadInput(t *testing.T) {
 	session := sessionOf(testSecret)
 	f.open(t, s, session)
 	now = now.Add(sessionTTL + time.Second)
-	if w := callback(s, "code=good-code&state="+session); w.Code != http.StatusGone {
+	if w := callback(s, "code=good-code&state="+f.state); w.Code != http.StatusGone {
 		t.Errorf("expired callback: %d", w.Code)
 	}
 	if _, out := result(t, s, "broadcaster", testSecret); out["status"] != StatusUnknown {
@@ -405,6 +407,13 @@ func TestExpiryAndBadInput(t *testing.T) {
 	}
 	if code, out := result(t, s, "broadcaster", "short"); code != http.StatusBadRequest || out["error"] != ErrBadRequest {
 		t.Errorf("short secret: %d %v", code, out)
+	}
+	// The session ID is not the state: knowing a sign-in link is not enough to
+	// answer for AudD.
+	fresh := sessionOf(strings.Repeat("9", 64))
+	f.open(t, s, fresh)
+	if w := callback(s, "code=good-code&state="+fresh); w.Code != http.StatusGone {
+		t.Errorf("session ID used as state: %d", w.Code)
 	}
 	if w := callback(s, "code=x&state=unknown"); w.Code != http.StatusGone {
 		t.Errorf("unknown state: %d", w.Code)

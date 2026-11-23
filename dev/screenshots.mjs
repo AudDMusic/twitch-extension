@@ -16,7 +16,8 @@ const require = createRequire(import.meta.url);
 const pw = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const BASE = process.env.PREVIEW_URL || 'http://127.0.0.1:8787';
 const OUT = process.argv[2] || 'screenshots';
-const FILTER = process.argv[3] ? new RegExp(process.argv[3]) : null;
+// Optional: only the states whose name contains one of these comma-separated words.
+const FILTER = process.argv[3] ? process.argv[3].split(',').filter(Boolean) : null;
 fs.mkdirSync(OUT, { recursive: true });
 
 const panel = (q) => `/ext/panel.html?anchor=panel&platform=web&${q}`;
@@ -142,7 +143,7 @@ const browser = await pw.chromium.launch({
 const problems = [];
 let count = 0;
 for (const [name, url, size, opt = {}] of shots) {
-  if (FILTER && !FILTER.test(name)) continue;
+  if (FILTER && !FILTER.some((word) => name.includes(word))) continue;
   await fetch(BASE + '/dev/reset').catch(() => {});
   const context = await browser.newContext({
     viewport: { width: size.w, height: size.h },

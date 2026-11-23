@@ -120,8 +120,9 @@ func extensionFiles(dir string, legacy bool) http.Handler {
 			w.Write([]byte(devEndpoints(r.URL.Query())))
 			return
 		}
-		file := filepath.Join(dir, filepath.FromSlash(name))
-		b, err := os.ReadFile(file)
+		// os.DirFS only opens paths inside dir.
+		file := strings.TrimPrefix(name, "/")
+		b, err := fs.ReadFile(os.DirFS(dir), file)
 		if err != nil {
 			http.NotFound(w, r)
 			return
