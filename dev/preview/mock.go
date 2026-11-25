@@ -459,6 +459,8 @@ func (a *account) answer(twitchID string) interface{} {
 		return []interface{}{false, "no_user"}
 	case strings.HasPrefix(a.State, "error-"):
 		return []interface{}{false, strings.TrimPrefix(a.State, "error-")}
+	case a.State == "stuck":
+		return []interface{}{false, "internal_error"}
 	case a.State == "active" || a.State == "expiring":
 		return []interface{}{true, a.fields(twitchID)}
 	default: // expired, unpaid
@@ -515,6 +517,10 @@ func (h *harness) twitchPhp(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, a.answer(channel))
 	case strings.HasPrefix(action, "save_user"):
+		if a.State == "stuck" { // linked already: twitch.php doesn't look at the token
+			writeJSON(w, 200, a.answer(channel))
+			return
+		}
 		switch r.FormValue("api_token") {
 		case "":
 			writeJSON(w, 200, []interface{}{false, "no_token"})

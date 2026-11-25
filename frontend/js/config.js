@@ -16,6 +16,7 @@
   var MESSAGES = {
     network: 'Can’t reach AudD. Check your connection, then try again.',
     internal_error: 'Something went wrong on AudD’s side. Try again in a minute; if it keeps happening, email hello@audd.io.',
+    account_check_failed: 'AudD couldn’t load this channel’s account: something went wrong on AudD’s side. Try again in a minute, or sign in again below. If it keeps happening, email hello@audd.io.',
     no_jwt: 'Twitch didn’t pass your channel details to AudD. Reload this page and try again; if it keeps happening, email hello@audd.io.',
     wrong_jwt: 'AudD couldn’t confirm your Twitch session. Reload this page and try again; if it keeps happening, email hello@audd.io.',
     not_broadcaster: 'Only the channel’s broadcaster can connect an AudD account here.',
@@ -40,7 +41,8 @@
     info: null,              // account fields from twitch.php
     connect: 'choose',       // choose | token | signin
     busy: null,              // signup | token
-    error: null,             // {code, where: 'account' | 'token' | 'recognition'}
+    error: null,             // {code, where: 'load' | 'account' | 'token' | 'recognition'}
+    loadFailed: null,        // the error code of a failed account check that still lets an account be linked
     session: { ready: null, starting: false, failed: null, failedAt: 0 }, // the next sign-in, see prepareSession
     signin: null,            // a sign-in in progress, see signInOpened
     awaitingPayment: false,
@@ -157,15 +159,20 @@
       return;
     }
 
-    box.appendChild(el('p', { text: 'AudD recognizes the songs. Sign in to link your AudD account to this channel.' }));
+    var errorCode = model.error && model.error.where === 'account' ? model.error.code : null;
+    // After a failed account check the ways to link an account stay, next to
+    // the retry: linking doesn't depend on that check.
+    if (model.loadFailed && !errorCode) box.appendChild(alertBox('account_check_failed'));
+    else box.appendChild(el('p', { text: 'AudD recognizes the songs. Sign in to link your AudD account to this channel.' }));
     var busy = !!model.busy;
     var signInLink = el('a', {
       class: 'button button--primary button--signin', id: 'signin-link', target: '_blank', rel: 'noopener',
       on: { click: signInOpened, auxclick: signInOpened }
     }, ['Sign in with AudD', icon('open')]);
     updateSignInLink(signInLink);
-    box.appendChild(el('div', { class: 'actions' }, [signInLink]));
-    var errorCode = model.error && model.error.where === 'account' ? model.error.code : null;
+    box.appendChild(el('div', { class: 'actions' }, [signInLink, model.loadFailed
+      ? el('button', { class: 'button', type: 'button', disabled: busy, on: { click: loadAccount } }, [icon('retry'), 'Try again'])
+      : null]));
     if (errorCode) box.appendChild(alertBox(errorCode));
     if (model.session.failed && model.session.failed !== errorCode) box.appendChild(alertBox(model.session.failed));
     if (model.switching) {
@@ -387,6 +394,11 @@
 
   // ------------------------------------------------------------ account
 
+  // Failed account checks after which linking an account would fail the same
+  // way: AudD can’t be reached, or it doesn’t accept the Twitch session. After
+  // any other failure AudD did answer, and the ways to link an account stay.
+  var DEAD_ENDS = { network: true, no_jwt: true, wrong_jwt: true, not_broadcaster: true };
+
   // Applies a twitch.php answer (get_user, signup or save_user).
   function applyAccount(res, where) {
     var s = AudD.accountState(res);
@@ -395,12 +407,18 @@
       return;
     }
     if (s.state === 'error') {
+      if (where === 'load' && !DEAD_ENDS[s.code]) {
+        model.account = 'none';
+        model.loadFailed = s.code;
+        return;
+      }
       model.error = { code: s.code, where: where };
       if (where === 'load') model.account = 'error';
       return;
     }
     if (model.account !== 'connected' && where !== 'load') announce('Your AudD account is connected to this channel.');
     model.account = 'connected';
+    model.loadFailed = null;
     model.switching = false;
     model.recognition = s.state;
     model.info = s.account;
@@ -425,6 +443,7 @@
     }
     model.account = 'loading';
     model.error = null;
+    model.loadFailed = null;
     render();
     AudD.twitchPhp('get_user', { jwt: auth.token }).then(function (res) {
       applyAccount(res, 'load');
