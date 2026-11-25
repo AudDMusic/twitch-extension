@@ -6,6 +6,8 @@ import (
 	"html"
 	"net/http"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -51,6 +53,35 @@ func (h *harness) signInRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/mock/lastSong-noresult/signIn/start/", h.signInStart)
 	mux.HandleFunc("/mock/lastSong-noresult/signIn/open/", h.signInOpen)
 	mux.HandleFunc("/mock/lastSong-noresult/signIn/result/", badGateway)
+	// signin=linked: the backend links the account itself when the sign-in
+	// finishes and sends the account with the result, so the page doesn't ask
+	// twitch.php (which may be failing: account=stuck).
+	mux.HandleFunc("/mock/lastSong-linked/signIn/start/", h.signInStart)
+	mux.HandleFunc("/mock/lastSong-linked/signIn/open/", h.signInOpen)
+	mux.HandleFunc("/mock/lastSong-linked/signIn/result/", h.signInResult)
+}
+
+// linkHere is the backend linking the account that owns the token to the
+// channel, and the account's state as twitch.php would answer. The caller
+// holds h.mu.
+func (h *harness) linkHere(channel, apiToken string) interface{} {
+	a := h.accounts[channel]
+	if a == nil {
+		a = &account{ChannelID: channel, UserID: strconv.Itoa(1000 + len(h.accounts))}
+		h.accounts[channel] = a
+	}
+	switch apiToken {
+	case "expired-token":
+		a.State = "expired"
+	case "unpaid-token":
+		a.State = "unpaid"
+	default:
+		a.State = "active"
+	}
+	if a.State == "active" {
+		return []interface{}{true, a.fields(channel)}
+	}
+	return []interface{}{false, "zero_limit", a.fields(channel)}
 }
 
 func badGateway(w http.ResponseWriter, r *http.Request) {
@@ -176,7 +207,11 @@ func (h *harness) signInResult(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "pending"})
 	case s.state == "done":
 		delete(h.sessions, id)
-		writeJSON(w, http.StatusOK, map[string]string{"status": "done", "api_token": s.apiToken})
+		out := map[string]interface{}{"status": "done", "api_token": s.apiToken}
+		if strings.HasPrefix(r.URL.Path, "/mock/lastSong-linked/") {
+			out["account"] = h.linkHere(channel, s.apiToken)
+		}
+		writeJSON(w, http.StatusOK, out)
 	case s.state == "declined":
 		delete(h.sessions, id)
 		writeJSON(w, http.StatusOK, map[string]string{"status": "declined"})

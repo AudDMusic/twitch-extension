@@ -317,19 +317,23 @@
 
   // twitch.php answers [ok, data-or-error-code, extra]. Returns
   // {ok, code, data, extra}; anything else counts as an internal error.
+  function readAnswer(d) {
+    // Anything but the [ok, ...] array (an HTML error page, a gateway
+    // error) is AudD's problem, not the streamer's.
+    if (!Array.isArray(d)) return { ok: false, code: 'internal_error', data: null, extra: null };
+    var ok = d[0] === true || d[0] === 1 || d[0] === 'true';
+    return {
+      ok: ok,
+      code: ok ? null : (str(d[1]) || 'internal_error'),
+      data: ok && d[1] && typeof d[1] === 'object' ? d[1] : null,
+      extra: d[2] && typeof d[2] === 'object' ? d[2] : null
+    };
+  }
+  AudD.readAnswer = readAnswer;
+
   function twitchPhp(action, form) {
     return request(E.twitchPhp + '?' + action, { form: form, timeout: 20000 }).then(function (r) {
-      var d = r.data;
-      // Anything but the [ok, ...] array (an HTML error page, a gateway
-      // error) is AudD's problem, not the streamer's.
-      if (!Array.isArray(d)) return { ok: false, code: 'internal_error', data: null, extra: null };
-      var ok = d[0] === true || d[0] === 1 || d[0] === 'true';
-      return {
-        ok: ok,
-        code: ok ? null : (str(d[1]) || 'internal_error'),
-        data: ok && d[1] && typeof d[1] === 'object' ? d[1] : null,
-        extra: d[2] && typeof d[2] === 'object' ? d[2] : null
-      };
+      return readAnswer(r.data);
     });
   }
   AudD.twitchPhp = twitchPhp;

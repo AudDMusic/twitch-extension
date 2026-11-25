@@ -20,6 +20,8 @@
 //	                        down, slow, slowlink)
 //	signin=nobackend|down|busy|noresult
 //	                        make "Sign in with AudD" unavailable (see signin.go)
+//	signin=linked           the backend links the account itself when the
+//	                        sign-in finishes, so twitch.php isn't asked
 //	platform=mobile         the Twitch mobile app
 //	ch=<channel>&history&background&shadow&black-font
 //	                        the hosted widget (panel.html only)
@@ -179,7 +181,7 @@ func devEndpoints(q map[string][]string) string {
 	switch get("signin") {
 	case "nobackend":
 		lastSong = "/mock/lastSong-old/"
-	case "down", "busy", "noresult":
+	case "down", "busy", "noresult", "linked":
 		lastSong = "/mock/lastSong-" + get("signin") + "/"
 	}
 	return fmt.Sprintf(`// Development endpoints served by dev/preview (not the production file).

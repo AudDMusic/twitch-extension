@@ -73,6 +73,7 @@ type account struct {
 	State     string // none, active, expiring, expired, unpaid, error-<code>, down
 	ChannelID string
 	UserID    string
+	Broken    bool // twitch.php answers internal_error whatever is asked (account=stuck)
 }
 
 type harness struct {
@@ -105,7 +106,7 @@ func (h *harness) routes(mux *http.ServeMux) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	// The backend, and variants of it for the signin= parameter (see signin.go).
-	for _, base := range []string{"/mock/lastSong/", "/mock/lastSong-old/", "/mock/lastSong-down/", "/mock/lastSong-busy/", "/mock/lastSong-noresult/"} {
+	for _, base := range []string{"/mock/lastSong/", "/mock/lastSong-old/", "/mock/lastSong-down/", "/mock/lastSong-busy/", "/mock/lastSong-noresult/", "/mock/lastSong-linked/"} {
 		mux.HandleFunc(base+"getChannelById/", h.getChannel)
 	}
 	mux.HandleFunc("/mock/lastSong/longpoll/", h.longpoll)
@@ -459,7 +460,7 @@ func (a *account) answer(twitchID string) interface{} {
 		return []interface{}{false, "no_user"}
 	case strings.HasPrefix(a.State, "error-"):
 		return []interface{}{false, strings.TrimPrefix(a.State, "error-")}
-	case a.State == "stuck":
+	case a.Broken:
 		return []interface{}{false, "internal_error"}
 	case a.State == "active" || a.State == "expiring":
 		return []interface{}{true, a.fields(twitchID)}
@@ -506,6 +507,9 @@ func (h *harness) twitchPhp(w http.ResponseWriter, r *http.Request) {
 	a := h.accounts[channel]
 	if a == nil {
 		a = &account{State: initial, ChannelID: channel, UserID: strconv.Itoa(1000 + len(h.accounts))}
+		if initial == "stuck" { // linked, and twitch.php fails whatever is asked
+			a.State, a.Broken = "active", true
+		}
 		h.accounts[channel] = a
 	}
 	switch {
@@ -517,7 +521,7 @@ func (h *harness) twitchPhp(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, a.answer(channel))
 	case strings.HasPrefix(action, "save_user"):
-		if a.State == "stuck" { // linked already: twitch.php doesn't look at the token
+		if a.Broken { // linked already: twitch.php doesn't look at the token
 			writeJSON(w, 200, a.answer(channel))
 			return
 		}

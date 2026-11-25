@@ -161,8 +161,8 @@
 
     var errorCode = model.error && model.error.where === 'account' ? model.error.code : null;
     // After a failed account check the ways to link an account stay, next to
-    // the retry: linking doesn't depend on that check.
-    if (model.loadFailed && !errorCode) box.appendChild(alertBox('account_check_failed'));
+    // the retry: signing in with AudD doesn't depend on that check.
+    if (model.loadFailed && !errorCode) box.appendChild(alertBox(LOAD_MESSAGES[model.loadFailed] ? model.loadFailed : 'account_check_failed'));
     else box.appendChild(el('p', { text: 'AudD recognizes the songs. Sign in to link your AudD account to this channel.' }));
     var busy = !!model.busy;
     var signInLink = el('a', {
@@ -174,7 +174,8 @@
       ? el('button', { class: 'button', type: 'button', disabled: busy, on: { click: loadAccount } }, [icon('retry'), 'Try again'])
       : null]));
     if (errorCode) box.appendChild(alertBox(errorCode));
-    if (model.session.failed && model.session.failed !== errorCode) box.appendChild(alertBox(model.session.failed));
+    // (When AudD can't be reached at all, the alert above has said so.)
+    if (model.session.failed && model.session.failed !== errorCode && model.loadFailed !== 'network') box.appendChild(alertBox(model.session.failed));
     if (model.switching) {
       box.appendChild(el('p', {}, [el('button', {
         class: 'link-button', type: 'button', disabled: busy,
@@ -394,10 +395,13 @@
 
   // ------------------------------------------------------------ account
 
-  // Failed account checks after which linking an account would fail the same
-  // way: AudD can’t be reached, or it doesn’t accept the Twitch session. After
-  // any other failure AudD did answer, and the ways to link an account stay.
-  var DEAD_ENDS = { network: true, no_jwt: true, wrong_jwt: true, not_broadcaster: true };
+  // Failed account checks after which nothing here can link an account: the
+  // page has no Twitch session, or it isn't the broadcaster's. After any other
+  // failure the ways to link an account stay: Sign in with AudD goes through
+  // the extension's backend, not through the check that failed.
+  var DEAD_ENDS = { no_jwt: true, not_broadcaster: true };
+  // Failures that have their own message; the rest get account_check_failed.
+  var LOAD_MESSAGES = { network: true, wrong_jwt: true };
 
   // Applies a twitch.php answer (get_user, signup or save_user).
   function applyAccount(res, where) {
@@ -449,8 +453,7 @@
       applyAccount(res, 'load');
       render();
     }).catch(function () {
-      model.account = 'error';
-      model.error = { code: 'network', where: 'load' };
+      applyAccount({ ok: false, code: 'network', data: null, extra: null }, 'load');
       render();
     });
   }
@@ -714,7 +717,11 @@
       var error = d && typeof d.error === 'string' && d.error ? d.error : '';
       if (r.status === 200 && d) {
         if (d.status === 'done') {
-          if (typeof d.api_token === 'string' && d.api_token) linkAccount(d.api_token);
+          // A backend that linked the account itself sends the account along,
+          // as twitch.php would answer; otherwise the page links it.
+          var linked = Array.isArray(d.account) ? AudD.readAnswer(d.account) : null;
+          if (linked && (linked.ok || linked.code === 'zero_limit')) accountLinked(linked);
+          else if (typeof d.api_token === 'string' && d.api_token) linkAccount(d.api_token);
           else signInFailed('internal_error');
         } else if (d.status === 'declined') {
           signInFailed('signin_declined');
@@ -749,6 +756,18 @@
     model.signin = { phase: 'linking' };
     render();
     saveToken(apiToken, 'signin');
+  }
+
+  // The backend linked the account when the sign-in finished: nothing more is
+  // asked of twitch.php.
+  function accountLinked(res) {
+    signinRun++;
+    clearTimeout(pollTimer);
+    model.signin = null;
+    model.busy = null;
+    applyAccount(res, 'account');
+    if (model.account !== 'connected') model.connect = 'choose';
+    render();
   }
 
   function signInFailed(code) {
