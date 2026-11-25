@@ -717,10 +717,19 @@ body[data-surface="component"] {
   border-radius: 4px;
 }
 
+/* The full card's text column is an inline-size container, which has no
+   width of its own. This card is as wide as its text, so it can't be one. */
+.view--component .now--compact .now__text {
+  container-type: normal;
+}
+
 .view--component .now--compact .now__title {
-  -webkit-line-clamp: 1;
+  display: block;
   font-size: 14px;
   line-height: 18px;
+  overflow-wrap: normal;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .view--component .now--compact .now__artist {
@@ -729,6 +738,7 @@ body[data-surface="component"] {
 
 .view--component .now--compact .status {
   margin-bottom: 1px;
+  white-space: nowrap;
   font-size: 11px;
   line-height: 14px;
 }
