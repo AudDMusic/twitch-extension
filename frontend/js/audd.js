@@ -343,10 +343,13 @@
     obj = obj || {};
     var tillText = str(obj.streams_till_text);
     var till = tillText ? Date.parse(tillText) : NaN;
+    // twitch.php sends suggest_renewal with every account, whenever it ends,
+    // so renewing is suggested only when the end is within a week.
+    var renewalFlag = obj.suggest_renewal === true || obj.suggest_renewal === 1 || obj.suggest_renewal === '1' || obj.suggest_renewal === 'true';
     return {
       tillText: tillText,
       till: isFinite(till) ? till : null,
-      suggestRenewal: obj.suggest_renewal === true || obj.suggest_renewal === 1 || obj.suggest_renewal === '1' || obj.suggest_renewal === 'true',
+      suggestRenewal: renewalFlag && isFinite(till) && till - Date.now() < 7 * 24 * 3600000,
       twitchId: str(obj.twitch_id),
       // The account is the channel's, but AudD couldn't set the channel up
       // for its recognition results this time.

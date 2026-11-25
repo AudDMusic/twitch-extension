@@ -444,7 +444,7 @@ func (a *account) fields(twitchID string) map[string]interface{} {
 	switch a.State {
 	case "active", "setupfailed":
 		f["streams_till_text"] = time.Now().Add(24 * day).Format("January 2, 2006")
-		f["suggest_renewal"] = false
+		f["suggest_renewal"] = true // as twitch.php sends it, whenever recognition ends
 		if a.State == "setupfailed" { // linked, but the channel couldn't be set up
 			f["channel_setup_failed"] = true
 		}
