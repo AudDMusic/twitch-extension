@@ -42,7 +42,9 @@
 
   var ext = window.Twitch && window.Twitch.ext;
   if (!ext) {
-    view.update({ phase: 'error', songs: [] });
+    // Twitch always shows an extension inside a frame. A page opened on its
+    // own is the hosted widget's address without ?ch=.
+    view.update({ phase: window.top === window.self ? 'nochannel' : 'error', songs: [] });
     return;
   }
 

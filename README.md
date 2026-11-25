@@ -30,7 +30,7 @@ Add any of these to the address:
 | `&shadow` | Add a shadow under the cover art |
 | `&black-font` | Dark text, for light scenes |
 
-The widget fits any source size; for example 600 × 160, or 600 × 420 with `&history`. To host it, serve the `frontend` folder with `panel.html` as the index page.
+The widget fits any source size; for example 600 × 160, or 600 × 420 with `&history`. To host it, run `node dev/build-widget.mjs`: it writes `dist/index.html`, one file with the styles, the scripts and the logo inside, to serve as the index page. Opened without `?ch=`, the page says where to copy the address from.
 
 ## Sign in with AudD
 

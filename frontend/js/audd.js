@@ -711,6 +711,10 @@
               'When AudD recognizes a song on this stream, it shows up here with a link to listen.'));
           }
         }
+        if (phaseKey === 'nochannel') {
+          body.appendChild(messageBlock('empty', 'This address needs your channel',
+            'This page shows the song playing on a stream, as a Browser source in OBS. Copy your address from “Show the song in OBS” on the AudD extension’s Configure page in your Twitch Creator Dashboard.'));
+        }
         if (phaseKey === 'songs') {
           slots.now = el('section', { class: 'now-slot', 'aria-label': 'Latest song' });
           body.appendChild(slots.now);
