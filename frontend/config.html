@@ -1,44 +1,80 @@
-<html class="no-touch"><head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-	<script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
-    <script src="js/jquery-3.3.1.min.js"></script>
-	<script type="text/javascript" src="js/mustache.min.js"></script>
-    <link type="text/css" rel="stylesheet" href="css/main.css">
-    <title>AudD Music Recognition</title>
-	
-<script id="music_info_template" type="text/x-template">
-    <a href={{song_link}} target="_blank"><div class="album-art-bg" style="background-image: url(&quot;{{thumb}}&quot;);"></div><img class="album-art" src="{{thumb}}"><div class="status-label">Now Playing</div><i class="fas fa-headphones-alt external-icon"></i></a><div class="track-info-container"><div class="track-info"><div class="track-name-label"><a id="track-title">{{title}}</a><div class="whitespace">&nbsp;</div></div><div class="artist-name-label"><a id="track-artist">{{artist}}</a></div></div></div>
-</script>
-<script id="history_template" type="text/x-template">
-    {{#Elements}}<p>{{time}} <a href="{{song_link}}" target="_blank">{{artist}} - {{title}}</a></p>{{/Elements}}
-</script>
-<link href="css/all.min.css" rel="stylesheet">
-<script type="text/javascript" src="js/main.js"></script>
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AudD Music Recognition: set up</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/viewer.css">
+  <link rel="stylesheet" href="css/config.css">
+  <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+  <script src="js/endpoints.js" defer></script>
+  <script src="js/audd.js" defer></script>
+  <script src="js/config.js" defer></script>
 </head>
-<body class="is-desktop vsc-initialized" style="background-color:#18181b;" id="config-body">
-   <div id="app" style="/*margin:20px;top:-10;*/color:white;"><p id="error" style="display: none;"></p><div id="account-question" style="display: none;"><p>Do you have an AudD account or API token?</p>
-   <button class="button button--outline button--secondary" id="haveToken-button">Yes</button> <button class="button button--outline button--primary" id="signUp-button">No</button></div>
-   <div id="enter-token" style="display: none;"><button class="button button--outline button--secondary" id="back-button">← Back</button><p>Enter your api_token:</p>
-    <input type="text" autocapitalize="off" autocorrect="off" value="" class="api-token-input" id="api-token" placeholder="api_token"></p>  <button class="button button--outline button--primary" id="saveToken-button">Save</button></div>
-   
-   <div id="subscription-info" style="display: none;"><p><span id="subscription-info-text"></span> <b><span id="date-till"></span></b>.</p>
-    <a href="" class="button button--outline button--primary" id="renew-button" style="display: none;" target="_blank">Renew the subscription</a></div>
-	
-   <div id="widget-link" style="display: none;"><p></p><p><b>You need to close the Configuration and Activate the extension by adding it as a Panel or a Component so it's visible on the broadcast page.</b></p><p>Once you start your stream, the extension will begin to identify and show the songs you broadcast.</p><p>You can also use a widget to display the playing song and its album cover on the stream. Here's the widget URL you can add as a browser source. (Add <i>&history</i> to it if you want it to display previously broadcasted songs).</b></p>
-    <input type="text" autocapitalize="off" readonly autocorrect="off" value="" class="obs-link-input" id="widget-link-input"> <button class="button button--outline button--secondary" id="copy-button2">Copy</button>
-	<p>If you want to configure the format of chat messages sent by the extension, contact us (hello@audd.io).</b></p></div>
-   <div class="margin-bottom--lg">
+<body data-surface="config">
+  <div class="config">
+    <p class="visually-hidden" id="announce" aria-live="polite"></p>
+    <header class="config__head">
+      <img class="config__logo" src="images/audd-logo.png" alt="AudD" width="67" height="18">
+      <div>
+        <h1 class="config__title">Music Recognition</h1>
+        <p class="config__lead">Shows viewers the song playing on your stream, with a link to listen, and posts each song in chat.</p>
+      </div>
+    </header>
 
-</div>
-   <div id="preview" style="display: none;">
-   <p>Preview:</p><div style="width:320px;height:300px;"><div class="extension-panel light"><div><div class="section-top" id="music_info"></div></div><div class="section-bottom history" id="history"><p>Once a song is identified, it will appear on the top of the extension. The history will be shown here, in the bottom part.</p></div></div></div>
-   </div>
-   </div>
-   <noscript>
-       You need to enable JavaScript to run this app.
-   </noscript>
+    <div class="config__grid">
+      <main class="config__main">
+        <ol class="steps">
+          <li class="step" id="step-account">
+            <span class="step__marker" aria-hidden="true"></span>
+            <div class="step__body">
+              <h2 class="step__title">Connect your AudD account</h2>
+              <div class="step__content" id="account"></div>
+            </div>
+          </li>
+          <li class="step" id="step-recognition">
+            <span class="step__marker" aria-hidden="true"></span>
+            <div class="step__body">
+              <h2 class="step__title">Turn on music recognition</h2>
+              <div class="step__content" id="recognition"></div>
+            </div>
+          </li>
+          <li class="step" id="step-channel">
+            <span class="step__marker" aria-hidden="true"></span>
+            <div class="step__body">
+              <h2 class="step__title">Add it to your channel</h2>
+              <div class="step__content" id="channel"></div>
+            </div>
+          </li>
+        </ol>
+
+        <section class="obs" id="obs" aria-labelledby="obs-heading" hidden>
+          <h2 class="obs__title" id="obs-heading">Show the song in OBS <span class="obs__optional">Optional</span></h2>
+          <p class="obs__text">Add a <strong>Browser</strong> source with this address. It has a transparent background, so it sits on top of your scene.</p>
+          <div class="copy-field">
+            <label class="visually-hidden" for="widget-url">Browser source address</label>
+            <input class="copy-field__input" id="widget-url" type="text" readonly spellcheck="false">
+            <button class="button" id="widget-copy" type="button"></button>
+          </div>
+          <fieldset class="options">
+            <legend class="visually-hidden">Widget options</legend>
+            <label class="option"><input type="checkbox" id="opt-history"> Recent songs</label>
+            <label class="option"><input type="checkbox" id="opt-background"> Background behind the song</label>
+            <label class="option"><input type="checkbox" id="opt-dark"> Dark text, for light scenes</label>
+          </fieldset>
+          <p class="hint">Any size works, for example 600 &times; 160, or 600 &times; 420 with recent songs.</p>
+        </section>
+
+        <p class="help">Need help, a free test, or a different chat message? Email <a href="mailto:hello@audd.io" target="_blank" rel="noopener">hello@audd.io</a>.</p>
+      </main>
+
+      <aside class="config__preview" aria-labelledby="preview-heading">
+        <h2 class="preview__heading" id="preview-heading">Panel preview</h2>
+        <div class="preview" id="preview"></div>
+        <p class="preview__caption" id="preview-caption"></p>
+      </aside>
+    </div>
+  </div>
 </body>
-
 </html>
-
