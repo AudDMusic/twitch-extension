@@ -16,8 +16,8 @@
 //	role=viewer|broadcaster|moderator
 //	                        the role in the Twitch JWT
 //	account=<scenario>      the AudD account twitch.php reports (none, active,
-//	                        expiring, expired, unpaid, error-<code>, stuck,
-//	                        down, slow, slowlink)
+//	                        setupfailed, expiring, expired, unpaid,
+//	                        error-<code>, stuck, down, slow, slowlink)
 //	signin=nobackend|down|busy|noresult
 //	                        make "Sign in with AudD" unavailable (see signin.go)
 //	signin=linked           the backend links the account itself when the

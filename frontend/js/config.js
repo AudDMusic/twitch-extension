@@ -143,6 +143,12 @@
     }
     if (connected) {
       box.appendChild(el('p', { class: 'ok-line' }, [icon('check'), 'Your AudD account is connected to this channel.']));
+      if (model.info && model.info.setupFailed) {
+        box.appendChild(el('div', { class: 'notice', role: 'status' }, [
+          el('p', { text: 'AudD couldn’t finish setting up this channel just now, so new songs may not show yet.' }),
+          el('div', { class: 'actions' }, [el('button', { class: 'button button--small', type: 'button', on: { click: loadAccount } }, [icon('retry'), 'Try again'])])
+        ]));
+      }
       box.appendChild(el('p', {}, [el('button', {
         class: 'link-button', type: 'button',
         on: { click: function () { stopAwaitingPayment(); model.account = 'none'; model.switching = true; model.connect = 'choose'; model.error = null; retrySession(); render(); } }

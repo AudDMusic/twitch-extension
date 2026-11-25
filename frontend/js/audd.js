@@ -348,6 +348,9 @@
       till: isFinite(till) ? till : null,
       suggestRenewal: obj.suggest_renewal === true || obj.suggest_renewal === 1 || obj.suggest_renewal === '1' || obj.suggest_renewal === 'true',
       twitchId: str(obj.twitch_id),
+      // The account is the channel's, but AudD couldn't set the channel up
+      // for its recognition results this time.
+      setupFailed: obj.channel_setup_failed === true || obj.channel_setup_failed === 1 || obj.channel_setup_failed === '1' || obj.channel_setup_failed === 'true',
       userId: str(obj.user_id),
       paymentsH: str(obj.payments_h)
     };

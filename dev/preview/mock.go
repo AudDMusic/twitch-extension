@@ -70,7 +70,7 @@ type channelState struct {
 }
 
 type account struct {
-	State     string // none, active, expiring, expired, unpaid, error-<code>, down
+	State     string // none, active, setupfailed, expiring, expired, unpaid, error-<code>, down
 	ChannelID string
 	UserID    string
 	Broken    bool // twitch.php answers internal_error whatever is asked (account=stuck)
@@ -442,9 +442,12 @@ func (a *account) fields(twitchID string) map[string]interface{} {
 	f := map[string]interface{}{"user_id": a.UserID, "payments_h": "preview-" + a.UserID, "twitch_id": twitchID}
 	day := 24 * time.Hour
 	switch a.State {
-	case "active":
+	case "active", "setupfailed":
 		f["streams_till_text"] = time.Now().Add(24 * day).Format("January 2, 2006")
 		f["suggest_renewal"] = false
+		if a.State == "setupfailed" { // linked, but the channel couldn't be set up
+			f["channel_setup_failed"] = true
+		}
 	case "expiring":
 		f["streams_till_text"] = time.Now().Add(3 * day).Format("January 2, 2006")
 		f["suggest_renewal"] = true
@@ -462,7 +465,7 @@ func (a *account) answer(twitchID string) interface{} {
 		return []interface{}{false, strings.TrimPrefix(a.State, "error-")}
 	case a.Broken:
 		return []interface{}{false, "internal_error"}
-	case a.State == "active" || a.State == "expiring":
+	case a.State == "active" || a.State == "expiring" || a.State == "setupfailed":
 		return []interface{}{true, a.fields(twitchID)}
 	default: // expired, unpaid
 		return []interface{}{false, "zero_limit", a.fields(twitchID)}
