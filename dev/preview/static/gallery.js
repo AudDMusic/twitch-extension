@@ -49,7 +49,7 @@
   ]);
 
   function stage(src, bg) { return '/dev/static/stage.html?bg=' + bg + '&src=' + encodeURIComponent(src); }
-  var compStates = [['typical', 'Now playing'], ['just', 'Just played'], ['recent', 'Played 20 min ago: compact'], ['stale', 'Played 3 h ago: nothing shown'], ['long', 'Long strings'], ['nocover', 'No cover art'], ['empty', 'No songs yet: nothing shown'], ['down', 'Backend unreachable: nothing shown']];
+  var compStates = [['typical', 'Now playing'], ['just', 'Just played'], ['recent', 'Played 20 min ago'], ['stale', 'Played 3 h ago: nothing shown'], ['long', 'Long strings'], ['nocover', 'No cover art'], ['empty', 'No songs yet: nothing shown'], ['down', 'Backend unreachable: nothing shown']];
   group('Video component over the video (320 × 160, shown at half size on a 1138 × 640 player)', 'Always the dark overlay style, like Twitch’s player controls. Bright, dark and busy footage.', [].concat(
     compStates.map(function (s) { return t(s[0] + ' / bright', stage('/ext/video_component.html?anchor=component&platform=web&theme=light&channel=' + s[0] + every, 'bright'), 1138, 640, 0.5, s[1]); }),
     ['typical', 'recent'].map(function (c) { return t(c + ' / dark', stage('/ext/video_component.html?anchor=component&platform=web&theme=dark&channel=' + c, 'dark'), 1138, 640, 0.5); }),

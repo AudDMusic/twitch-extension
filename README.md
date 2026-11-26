@@ -5,7 +5,7 @@ The source code of the [AudD Music Recognition Twitch extension](https://dashboa
 ## What's in the extension
 
 - **Panel** (`frontend/panel.html`), below the video and in the Twitch mobile app: the song playing now, with cover art and a link to the song page, and the songs played before it. Follows Twitch's light and dark themes.
-- **Video component** (`frontend/video_component.html`), over the video: the song playing now, in the dark overlay style of Twitch's player controls. A song that played a while ago shrinks to one line; with no song from the last hour, or while the backend can't be reached, nothing is drawn over the video.
+- **Video component** (`frontend/video_component.html`), over the video: the latest song as a card that fills the component's area (2:1, 320 × 160), in the dark overlay style of Twitch's player controls. With no song from the last hour, or while the backend can't be reached, nothing is drawn over the video.
 - **Configuration page** (`frontend/config.html`), in the Creator Dashboard: the streamer connects an AudD account (Sign in with AudD, a new account, or a pasted API token), turns on recognition for the stream, and gets the address of the OBS widget. A preview shows the panel with the channel's real songs.
 - **Hosted widget** (the same `panel.html` at [widget.audd.tech](https://widget.audd.tech/)), for OBS browser sources.
 

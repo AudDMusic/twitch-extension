@@ -89,7 +89,7 @@ const callbacksSecret = ""
 // !   Please note that at some point in the future when you'll make updates, some of your users will still have
 // !   the previous version installed, which means that you'll need to get the version of the extension installed
 // !   on a Twitch channel from the frontend, which is currently not implemented
-const extensionVersion = "0.1.0"
+const extensionVersion = "0.1.1"
 
 // The OAuth client of "Sign in with AudD" on the configuration page (see
 // package signin). Register your own with AudD's authorization server

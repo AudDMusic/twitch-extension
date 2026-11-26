@@ -107,7 +107,7 @@
     "summary": "Identifies and shows the song from the audio playing on the stream. Powered by the AudD Music recognition API.",
     "supportEmail": "hello@audd.io",
     "vendorCode": "",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "viewerSummary": "Shows the song that's playing on the stream. Click a song to open it on your favorite music service.",
     "viewerUrl": "https://localhost:8080/panel.html",
     "viewerUrls": {

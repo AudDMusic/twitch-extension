@@ -10,7 +10,7 @@
   var E = window.AUDD_ENDPOINTS || {};
   var AudD = (window.AudD = {});
   AudD.endpoints = E;
-  AudD.version = '0.1.0';
+  AudD.version = '0.1.1';
 
   var params = new URLSearchParams(window.location.search);
   AudD.params = params;
@@ -824,7 +824,7 @@
       var status = top ? songStatus(top, now) : null;
       var key;
       if (!top) key = state.phase;
-      else key = top.key + '|' + (status.kind !== 'past' ? 'full' : isOld(top, now) ? 'hidden' : 'compact');
+      else key = top.key + '|' + (status.kind !== 'past' ? 'now' : isOld(top, now) ? 'hidden' : 'past');
       if (key === last.nowKey) {
         var label = body.querySelector('.status__text');
         if (label && status) label.textContent = status.label;
@@ -837,7 +837,7 @@
       // act on: no song yet, loading, the backend unreachable, or a song
       // from more than an hour ago.
       if (!top || isOld(top, now)) return;
-      body.appendChild(nowCard(top, status, (status.kind === 'past' ? 'now--compact' : 'now--full') + (isNew ? ' is-new' : '')));
+      body.appendChild(nowCard(top, status, isNew ? 'is-new' : ''));
     }
 
     function render() {

@@ -640,9 +640,12 @@ li.is-new .row {
 }
 
 /* -------------------------------------------- video component (overlay)
-   Twitch renders the component 320 px wide and scales it with the video.
-   It always sits on top of live video, so it uses the dark overlay style of
-   Twitch's own player controls in both themes. */
+   Twitch gives the component a 2:1 area on the right of the player, 25% of
+   its height, and renders it 320 px wide (320 x 160), scaled with the video.
+   The card fills that area; every size is in --u, one 320th of the width, so
+   it still fills an area of another size. It always sits on top of live
+   video, so it uses the dark overlay style of Twitch's own player controls
+   in both themes. */
 
 /* No color-scheme on views that sit on top of something: an iframe whose
    color scheme differs from the page around it gets an opaque background. */
@@ -656,26 +659,31 @@ body[data-surface="component"] {
 }
 
 .view--component {
+  --u: min(calc(100vw / 320), calc(100vh / 160));
   display: flex;
   justify-content: flex-end;
   align-items: flex-start;
   height: 100%;
-  padding: 6px;
+  padding: calc(var(--u) * 4);
   color: #ffffff;
   --text: #ffffff;
   --text-2: #dcdce2;
   --text-3: #c3c3cc;
   --accent: #ff8fa3;
   --line: rgba(255, 255, 255, 0.14);
+  --line-strong: rgba(255, 255, 255, 0.3);
   --bg-raised: rgba(255, 255, 255, 0.1);
+  --bg-hover: rgba(255, 255, 255, 0.12);
   --focus: #bf94ff;
 }
 
 .view--component .now {
-  width: 100%;
+  width: calc(var(--u) * 312);
+  height: calc(var(--u) * 152);
   min-height: 0;
-  padding: 10px 12px 10px 10px;
-  border-radius: 8px;
+  gap: calc(var(--u) * 14);
+  padding: calc(var(--u) * 12);
+  border-radius: calc(var(--u) * 10);
   background: rgba(14, 14, 16, 0.88);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
@@ -687,70 +695,69 @@ body[data-surface="component"] {
 }
 
 .view--component .cover {
-  width: 84px;
-  height: 84px;
+  width: calc(var(--u) * 128);
+  height: calc(var(--u) * 128);
+  border-radius: calc(var(--u) * 7);
   box-shadow: none;
+}
+
+/* The text column runs from the top of the cover to its bottom: the status,
+   the title and the artist, and Listen at the bottom. */
+.view--component .now__text {
+  align-self: stretch;
+}
+
+.view--component .status-row {
+  display: contents;
+}
+
+.view--component .status {
+  gap: calc(var(--u) * 6);
+  margin-bottom: calc(var(--u) * 5);
+  font-size: calc(var(--u) * 13);
+  line-height: calc(var(--u) * 16);
+}
+
+.view--component .eq {
+  gap: calc(var(--u) * 2);
+  width: calc(var(--u) * 13);
+  height: calc(var(--u) * 12);
+}
+
+.view--component .eq span {
+  width: calc(var(--u) * 3);
 }
 
 .view--component .now__title {
-  font-size: 17px;
-  line-height: 21px;
+  order: 1;
+  font-size: calc(var(--u) * 19);
+  line-height: calc(var(--u) * 23);
 }
 
 .view--component .now__artist {
-  font-size: 14px;
-  line-height: 19px;
+  order: 2;
+  margin-top: calc(var(--u) * 3);
+  font-size: calc(var(--u) * 15);
+  line-height: calc(var(--u) * 19);
 }
 
-
-/* A song that played a while ago: smaller, one line */
-.view--component .now--compact {
-  width: auto;
-  max-width: 100%;
-  gap: 9px;
-  padding: 6px 10px 6px 6px;
+.view--component .listen {
+  order: 3;
+  align-self: flex-start;
+  gap: calc(var(--u) * 4);
+  margin-top: auto;
+  padding: calc(var(--u) * 3) calc(var(--u) * 10) calc(var(--u) * 3) calc(var(--u) * 11);
+  font-size: calc(var(--u) * 13);
+  line-height: calc(var(--u) * 16);
 }
 
-.view--component .now--compact .cover {
-  width: 44px;
-  height: 44px;
-  border-radius: 4px;
+/* The narrow-column rule hides the label; here there is room for it. */
+.view--component .listen__label {
+  display: inline;
 }
 
-/* The full card's text column is an inline-size container, which has no
-   width of its own. This card is as wide as its text, so it can't be one. */
-.view--component .now--compact .now__text {
-  container-type: normal;
-}
-
-.view--component .now--compact .now__title {
-  display: block;
-  font-size: 14px;
-  line-height: 18px;
-  overflow-wrap: normal;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.view--component .now--compact .now__artist {
-  display: none;
-}
-
-.view--component .now--compact .status {
-  margin-bottom: 1px;
-  white-space: nowrap;
-  font-size: 11px;
-  line-height: 14px;
-}
-
-.view--component .now--compact .listen {
-  padding: 0;
-  box-shadow: none;
-  font-size: 0;
-}
-
-.view--component .now--compact .listen .icon {
-  font-size: 13px;
+.view--component .listen .icon {
+  font-size: calc(var(--u) * 13);
 }
 
 .pill {
