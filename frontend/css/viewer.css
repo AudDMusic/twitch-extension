@@ -640,12 +640,12 @@ li.is-new .row {
 }
 
 /* -------------------------------------------- video component (overlay)
-   Twitch gives the component a 2:1 area on the right of the player, 25% of
-   its height, and renders it 320 px wide (320 x 160), scaled with the video.
-   The card fills that area; every size is in --u, one 320th of the width, so
-   it still fills an area of another size. It always sits on top of live
-   video, so it uses the dark overlay style of Twitch's own player controls
-   in both themes. */
+   The card fills the whole area Twitch gives the component, whatever its
+   size and shape (with the repository's settings: 2:1, 25% of the player's
+   height, rendered 320 px wide, so 320 x 160). Every size is in --u, which
+   follows the area. A wide area has the cover next to the text; a squarer
+   one has it above. It always sits on top of live video, so it uses the
+   dark overlay style of Twitch's own player controls in both themes. */
 
 /* No color-scheme on views that sit on top of something: an iframe whose
    color scheme differs from the page around it gets an opaque background. */
@@ -660,9 +660,9 @@ body[data-surface="component"] {
 
 .view--component {
   --u: min(calc(100vw / 320), calc(100vh / 160));
+  /* The cover: as tall as the card's inside, at most 36% of its width */
+  --cover: min(calc(100vh - var(--u) * 32), calc((100vw - var(--u) * 34) * 0.36));
   display: flex;
-  justify-content: flex-end;
-  align-items: flex-start;
   height: 100%;
   padding: calc(var(--u) * 4);
   color: #ffffff;
@@ -678,11 +678,11 @@ body[data-surface="component"] {
 }
 
 .view--component .now {
-  width: calc(var(--u) * 312);
-  height: calc(var(--u) * 152);
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
-  gap: calc(var(--u) * 14);
-  padding: calc(var(--u) * 12);
+  gap: calc(var(--u) * 12);
+  padding: calc(var(--u) * 12) calc(var(--u) * 12) calc(var(--u) * 12) calc(var(--u) * 14);
   border-radius: calc(var(--u) * 10);
   background: rgba(14, 14, 16, 0.88);
   -webkit-backdrop-filter: blur(10px);
@@ -695,33 +695,28 @@ body[data-surface="component"] {
 }
 
 .view--component .cover {
-  width: calc(var(--u) * 128);
-  height: calc(var(--u) * 128);
+  width: var(--cover);
+  height: var(--cover);
   border-radius: calc(var(--u) * 7);
   box-shadow: none;
 }
 
-/* The text column runs from the top of the cover to its bottom: the status,
-   the title and the artist, and Listen at the bottom. */
-.view--component .now__text {
-  align-self: stretch;
-}
-
 .view--component .status-row {
-  display: contents;
+  gap: calc(var(--u) * 8);
+  margin-bottom: calc(var(--u) * 4);
 }
 
 .view--component .status {
   gap: calc(var(--u) * 6);
-  margin-bottom: calc(var(--u) * 5);
-  font-size: calc(var(--u) * 13);
+  font-size: calc(var(--u) * 12);
   line-height: calc(var(--u) * 16);
+  white-space: nowrap;
 }
 
 .view--component .eq {
   gap: calc(var(--u) * 2);
-  width: calc(var(--u) * 13);
-  height: calc(var(--u) * 12);
+  width: calc(var(--u) * 12);
+  height: calc(var(--u) * 11);
 }
 
 .view--component .eq span {
@@ -729,35 +724,61 @@ body[data-surface="component"] {
 }
 
 .view--component .now__title {
-  order: 1;
-  font-size: calc(var(--u) * 19);
-  line-height: calc(var(--u) * 23);
+  font-size: calc(var(--u) * 18);
+  line-height: calc(var(--u) * 22);
 }
 
 .view--component .now__artist {
-  order: 2;
-  margin-top: calc(var(--u) * 3);
-  font-size: calc(var(--u) * 15);
-  line-height: calc(var(--u) * 19);
+  margin-top: calc(var(--u) * 2);
+  font-size: calc(var(--u) * 14);
+  line-height: calc(var(--u) * 18);
 }
 
 .view--component .listen {
-  order: 3;
-  align-self: flex-start;
-  gap: calc(var(--u) * 4);
-  margin-top: auto;
-  padding: calc(var(--u) * 3) calc(var(--u) * 10) calc(var(--u) * 3) calc(var(--u) * 11);
-  font-size: calc(var(--u) * 13);
+  gap: calc(var(--u) * 3);
+  padding: calc(var(--u) * 2) calc(var(--u) * 8) calc(var(--u) * 2) calc(var(--u) * 9);
+  font-size: calc(var(--u) * 12);
   line-height: calc(var(--u) * 16);
 }
 
-/* The narrow-column rule hides the label; here there is room for it. */
+/* The column's own narrow rule would hide the label; it fits here. */
 .view--component .listen__label {
   display: inline;
 }
 
 .view--component .listen .icon {
-  font-size: calc(var(--u) * 13);
+  font-size: calc(var(--u) * 12);
+}
+
+/* A song from earlier: "Played 20 min ago" leaves room for the icon only. */
+.view--component .status--past + .listen {
+  padding: calc(var(--u) * 2) calc(var(--u) * 6);
+}
+
+.view--component .status--past + .listen .listen__label {
+  display: none;
+}
+
+/* A square or tall area: the cover above the text. */
+@media (max-aspect-ratio: 5/4) {
+  .view--component {
+    --u: min(calc(100vw / 240), calc(100vh / 300));
+    --cover: min(calc(100vw - var(--u) * 36), calc(100vh - var(--u) * 140));
+  }
+
+  .view--component .now {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+  }
+
+  .view--component .cover {
+    align-self: center;
+  }
+
+  .view--component .now__text {
+    flex: none;
+  }
 }
 
 .pill {
